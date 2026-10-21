@@ -43,3 +43,32 @@ assert "IDNativeHideOwnerKey" in coordinator
 assert "cardViewportVisible" in coordinator and "bounds.size.height >= 44" in coordinator
 assert "depth > 8 || requests.count >= 4096" in main
 assert "reliable = IDCollectRequests(allRequests, requests, 0) && reliable" in main
+
+# 0.1.9 rendering/layout regressions: check ordering and real-view fail-safe,
+# not merely the model count or a nonzero empty viewport.
+digest = (root/'IDDigestUI.inc').read_text()
+assert digest.count('contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever') == 2
+assert 'contentLayoutGuide' in digest and 'frameLayoutGuide.widthAnchor constant:-28' in digest
+assert 'withHorizontalFittingPriority:UILayoutPriorityRequired' in digest
+assert 'MIN(category + 38 + content, IDPanelMaxHeight)' in digest
+assert 'shell.translatesAutoresizingMaskIntoConstraints = NO' in ui
+assert 'constraintGreaterThanOrEqualToConstant:64' in ui
+assert 'self.builtCardCount = rendered' in ui and 'self.builtCardCount = 0' in ui
+assert '- (BOOL)cardsReadyForNativeHide' in ui
+assert 'if (!readable) return NO' in ui
+assert 'valid == self.builtCardCount && visible' in ui
+assert 'CGRectIntersection(frame, self.cardScroll.bounds)' in ui
+assert '[digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards]' in coordinator
+assert '&& cardViewportVisible && cardsReady' in coordinator
+assert 'digest.builtCardCount' in coordinator and 'cardsLayoutReady' in coordinator
+render = main.split('- (void)render {',1)[1].split('\n- (void)updatePanelGeometry',1)[0]
+assert render.index('showCards]') < render.index('[self updateNativeListVisibility]')
+assert render.index('layoutIfNeeded]') < render.index('[self updateNativeListVisibility]')
+mount = main.split('self.overlay = YES;',1)[1].split('if (self.overlay)',1)[0]
+assert 'self.inserted = YES;' in mount and '[self render];' in mount
+assert 'additionalSafeAreaInsets =' not in main
+for key in ('PanelTopOffset', 'PanelSideInset', 'PanelMaxHeight'):
+    assert f'@"{key}"' in main and f'@"{key}"' in prefs
+assert 'resetPanelLayout' in prefs and 'layoutChangePending' in prefs
+assert '不是已验证的时钟避让' in prefs
+print('PASS 0.1.9 render-after-mount, no automatic content inset, actual card/label readiness, bounded layout controls')

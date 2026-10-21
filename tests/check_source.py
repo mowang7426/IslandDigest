@@ -21,10 +21,10 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.1.8'
+assert info['CFBundleVersion'] == '0.1.9'
 assert 'preferenceloader' in (root/'control').read_text()
 assert plistlib.loads((root/'IslandDigest.plist').read_bytes())['Filter']['Bundles'] == ['com.apple.springboard']
-print('PASS 0.1.8 portable source/config contracts (not runtime validation)')
+print('PASS 0.1.9 portable source/config contracts (not runtime validation)')
 
 ui = (root / 'IDDigestUI.inc').read_text()
 for key in ('PinnedApps', 'SortMode', 'LayoutMode', 'RememberFilter'):
@@ -35,7 +35,9 @@ assert '[state endAppearance]' in tweak and '[state beginAppearance]' in tweak
 assert 'hold.cancelsTouchesInView = YES' in ui
 assert 'cancelTrackingWithEvent:nil' in ui and 'accessibilityCustomActions' in ui
 assert 'geometryUpdating' in tweak and 'CGSizeEqualToSize' in tweak
-assert 'self.owner.additionalSafeAreaInsets = self.savedInsets' in tweak
+assert 'additionalSafeAreaInsets =' not in tweak, 'Own overlays must never change the system owner safe area'
+assert 'window.safeAreaInsets' in tweak and 'CGRectIntersection(owner.bounds, safe)' in tweak
+assert 'IDLayoutPanel' in tweak and 'UIKit-window-bounded' in tweak
 assert 'self.renderedRevision != IDOptionsRevision' in tweak
 assert 'previous.latest' in tweak and 'previous.hasCriticalAlert' in tweak
 assert 'IDPinnedAppsController.class' in prefs
