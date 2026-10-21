@@ -72,3 +72,6 @@ for key in ('PanelTopOffset', 'PanelSideInset', 'PanelMaxHeight'):
 assert 'resetPanelLayout' in prefs and 'layoutChangePending' in prefs
 assert '不是已验证的时钟避让' in prefs
 print('PASS 0.1.9 render-after-mount, no automatic content inset, actual card/label readiness, bounded layout controls')
+reset = prefs.split('- (void)resetPanelLayout {',1)[1].split('\n}',1)[0]
+assert 'self.layoutChangeGeneration++;' in reset and 'self.layoutChangePending = NO;' in reset
+assert 'if (generation != self.layoutChangeGeneration) return;' in prefs

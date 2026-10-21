@@ -104,6 +104,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 }
 - (void)resetPanelLayout {
     self.layoutChangeGeneration++;
+    self.layoutChangePending = NO;
     for (NSString *key in @[@"PanelTopOffset", @"PanelSideInset", @"PanelMaxHeight"]) IDWritePreference(key, nil);
     IDNotifyPreferencesChanged(); _specifiers = nil; [self reloadSpecifiers];
 }
@@ -128,8 +129,9 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
             self.layoutChangePending = YES;
             NSUInteger generation = self.layoutChangeGeneration;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (generation != self.layoutChangeGeneration) return;
                 self.layoutChangePending = NO;
-                if (generation == self.layoutChangeGeneration) IDNotifyPreferencesChanged();
+                IDNotifyPreferencesChanged();
             });
         }
         return; // Do not rebuild Settings cells while the slider is being dragged.
