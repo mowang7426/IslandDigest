@@ -84,6 +84,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         magic, blob_length, blob_count = struct.unpack_from(">III", signature)
         assert magic == 0xFADE0CC0
         verified = 0
+        verified_sha256 = 0
         for blob_index in range(blob_count):
             slot_type, blob_offset = struct.unpack_from(">II", signature, 12 + blob_index * 8)
             if struct.unpack_from(">I", signature, blob_offset)[0] != 0xFADE0C02:
@@ -92,17 +93,24 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
             hash_offset = struct.unpack_from(">I", directory, 16)[0]
             slot_count, code_limit = struct.unpack_from(">II", directory, 28)
             hash_size, hash_type, platform, page_power = struct.unpack_from("BBBB", directory, 36)
-            assert hash_type == 2 and hash_size == 32
+            # ldid emits both SHA-1 and SHA-256 CodeDirectories. Verify
+            # every directory, while requiring SHA-256 below (never SHA-1 only).
+            assert (hash_type, hash_size) in ((1, 20), (2, 32)), (hash_type, hash_size)
+            digest = hashlib.sha256 if hash_type == 2 else hashlib.sha1
             page_size = 1 << page_power
             for page_index in range(slot_count):
                 expected = directory[hash_offset + page_index * hash_size:
                                      hash_offset + (page_index + 1) * hash_size]
                 page = image[page_index * page_size:min((page_index + 1) * page_size, code_limit)]
-                assert hashlib.sha256(page).digest() == expected, (index, page_index)
+                assert digest(page).digest() == expected, (index, page_index)
             verified += slot_count
-        assert verified > 0
+            if hash_type == 2:
+                verified_sha256 += slot_count
+        assert verified_sha256 > 0, "Missing SHA-256 CodeDirectory"
         architecture = "arm64e" if subtype & 0xFFFFFF == 2 else "arm64"
-        print(f"PASS {architecture}: iOS 15.0, {scheme} install name, {verified} signed pages")
+        print(f"PASS {architecture}: iOS 15.0, {scheme} install name, {verified_sha256} SHA-256 signed pages")
+        print(f"  CPU subtype: {subtype:#010x}; install name: {install_name}")
+        print(f"  Dependencies: {dependencies}")
     assert architectures == {0, 2}
     print("PASS metadata, payload, SpringBoard filter, system dependencies, no install scripts")
     print("SHA-256", hashlib.sha256(archive).hexdigest())

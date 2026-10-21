@@ -8,6 +8,8 @@ IslandDigest_FILES := Tweak.xm
 IslandDigest_CFLAGS := -fobjc-arc
 IslandDigest_FRAMEWORKS := UIKit QuartzCore
 IslandDigest_LOGOS_DEFAULT_GENERATOR := internal
-IslandDigest_LDFLAGS := -Wl,-no_fixup_chains
+# Xcode 15's new linker ignores -no_fixup_chains for arm64e; use the
+# classic linker to preserve the audited opcode-based fixups on iOS 15+.
+IslandDigest_LDFLAGS := -Wl,-ld_classic -Wl,-no_fixup_chains
 
 include $(THEOS_MAKE_PATH)/tweak.mk
