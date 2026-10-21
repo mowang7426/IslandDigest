@@ -38,24 +38,50 @@
     self.clearButton.accessibilityIdentifier = @"IslandDigestClear";
     [self.clearButton addTarget:self action:@selector(clearTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:self.clearButton];
+    // A direct sibling interaction layer avoids UIScrollView/UIStackView hit testing.
+    self.cardTapLayer = [UIView new]; self.cardTapLayer.userInteractionEnabled = YES;
+    self.cardTapLayer.backgroundColor = UIColor.clearColor; self.cardTapLayer.accessibilityElementsHidden = YES;
+    self.cardTapButtons = [NSMutableArray array]; [self addSubview:self.cardTapLayer];
     self.accessibilityIdentifier = @"IslandDigest";
     return self;
 }
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    // Scope the fallback to the card viewport. This repairs a transparent
-    // sibling/scroll-view interception without stealing category or footer taps.
-    if (!self.cardScroll.hidden && CGRectContainsPoint(self.cardScroll.frame, point)) {
-        CGPoint cardPoint = [self.cardScroll convertPoint:point fromView:self];
-        for (UIView *candidate in self.cardStack.arrangedSubviews) {
-            if (![candidate.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || candidate.hidden) continue;
-            CGPoint local = [candidate convertPoint:cardPoint fromView:self.cardScroll];
-            if (CGRectContainsPoint(candidate.bounds, local) && candidate.userInteractionEnabled) return candidate;
-        }
-    }
+    // The explicit overlay owns only exact card frames; leave all other regions
+    // to UIKit so category buttons and the clear control remain reachable.
     return [super hitTest:point withEvent:event];
 }
 
 - (void)clearTapped { [self.coordinator beginClear]; }
+- (void)rebuildCardTapOverlay {
+    if (!self.cardTapLayer) return;
+    for (UIButton *button in self.cardTapButtons) [button removeFromSuperview];
+    [self.cardTapButtons removeAllObjects];
+    self.cardTapLayer.frame = self.cardScroll.frame;
+    if (self.cardScroll.hidden) return;
+    for (UIView *shell in self.cardStack.arrangedSubviews) {
+        if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || shell.hidden) continue;
+        CGRect frame = [shell convertRect:shell.bounds toView:self.cardTapLayer];
+        frame = CGRectIntersection(frame, self.cardTapLayer.bounds);
+        if (CGRectIsNull(frame) || frame.size.width < 44 || frame.size.height < 22) continue;
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.frame = frame; button.backgroundColor = UIColor.clearColor;
+        button.accessibilityIdentifier = @"IslandDigestCardTapProbe";
+        button.accessibilityLabel = shell.accessibilityLabel;
+        button.accessibilityTraits = UIAccessibilityTraitButton;
+        __weak IDCoordinator *coordinator = self.coordinator;
+        NSDictionary *cardModel = objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay));
+        [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
+            BOOL opened = cardModel[@"request"] && [coordinator openCardRequest:cardModel[@"request"]];
+            button.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
+            if (!opened) UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [self.cardTapLayer addSubview:button]; [self.cardTapButtons addObject:button];
+    }
+}
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    if (scrollView == self.cardScroll) [self rebuildCardTapOverlay];
+}
 - (CGFloat)rowHeight {
     CGFloat base = IDMiniControls ? 44 : 52;
     return MAX(44, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:base]));
@@ -118,7 +144,9 @@
     CGFloat scrollWidth = IDGridLayout ? width : MAX(width, x + 6);
     self.stack.frame = CGRectMake(0, 0, scrollWidth, height);
     self.scroll.contentSize = CGSizeMake(scrollWidth, height);
-    // A guarded coordinator update changes constraints only when the preferred size differs.
+    // Rebuild after explicit frames exist; these sibling buttons are the only
+    // card hit targets and are never hidden under native list content.
+    [self rebuildCardTapOverlay];
     [self.coordinator updatePanelGeometry];
 }
 - (void)pinGesture:(UILongPressGestureRecognizer *)recognizer {

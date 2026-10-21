@@ -25,7 +25,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.4";
+    IDDiagnostics[@"version"] = @"0.2.5";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -110,7 +110,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.4.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.5.startup-pending";
 #endif
 }
 
@@ -192,6 +192,8 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UIScrollView *cardScroll;
 @property(nonatomic, strong) UIStackView *cardStack;
 @property(nonatomic, strong) UILabel *cardNotice;
+@property(nonatomic, strong) UIView *cardTapLayer;
+@property(nonatomic, strong) NSMutableArray<UIButton *> *cardTapButtons;
 @property(nonatomic) NSUInteger builtCardCount;
 - (BOOL)cardsReadyForNativeHide;
 - (void)showCards;
