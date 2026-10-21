@@ -12,6 +12,20 @@
     self.hint.adjustsFontSizeToFitWidth = YES; [self addSubview:self.hint];
     self.scroll = [UIScrollView new]; [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
+    self.cardScroll = [UIScrollView new]; self.cardScroll.alwaysBounceVertical = YES;
+    self.cardScroll.accessibilityLabel = @"插件内通知预览"; [self addSubview:self.cardScroll];
+    self.cardStack = [UIStackView new]; self.cardStack.axis = UILayoutConstraintAxisVertical;
+    self.cardStack.spacing = 10; self.cardStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.cardScroll addSubview:self.cardStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.cardStack.leadingAnchor constraintEqualToAnchor:self.cardScroll.contentLayoutGuide.leadingAnchor constant:14],
+        [self.cardStack.trailingAnchor constraintEqualToAnchor:self.cardScroll.contentLayoutGuide.trailingAnchor constant:-14],
+        [self.cardStack.topAnchor constraintEqualToAnchor:self.cardScroll.contentLayoutGuide.topAnchor constant:4],
+        [self.cardStack.bottomAnchor constraintEqualToAnchor:self.cardScroll.contentLayoutGuide.bottomAnchor constant:-12],
+        [self.cardStack.widthAnchor constraintEqualToAnchor:self.cardScroll.frameLayoutGuide.widthAnchor constant:-28]]];
+    self.cardNotice = [UILabel new]; self.cardNotice.numberOfLines = 2;
+    self.cardNotice.font = [UIFont systemFontOfSize:10]; self.cardNotice.textColor = UIColor.secondaryLabelColor;
+    self.cardNotice.adjustsFontSizeToFitWidth = YES; [self addSubview:self.cardNotice];
     self.clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [self.clearButton setImage:[UIImage systemImageNamed:@"trash"] forState:UIControlStateNormal];
     self.clearButton.tintColor = UIColor.systemRedColor; self.clearButton.enabled = NO;
@@ -26,14 +40,22 @@
 - (CGFloat)rowHeight {
     return MAX(52, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:52]));
 }
-- (CGSize)sizeThatFits:(CGSize)size {
+- (CGFloat)categoryHeightForWidth:(CGFloat)width {
     CGFloat row = [self rowHeight];
-    NSUInteger columns = IDExperienceColumns(size.width, IDGridLayout);
+    NSUInteger columns = IDExperienceColumns(width, IDGridLayout);
     NSUInteger rows = IDGridLayout ? IDExperienceRows(self.stack.subviews.count, columns) : 1;
     CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
     if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
     NSUInteger visible = IDGridLayout ? IDExperienceVisibleRows(rows, ownerHeight, row) : 1;
-    return CGSizeMake(size.width, 66 + visible * row + (visible - 1) * 8);
+    return 66 + visible * row + (visible - 1) * 8;
+}
+- (CGSize)sizeThatFits:(CGSize)size {
+    CGFloat category = [self categoryHeightForWidth:size.width];
+    if (!IDContainedMode) return CGSizeMake(size.width, category);
+    CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
+    if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
+    CGFloat maximum = MAX(category, MIN(540, ownerHeight * 0.68));
+    return CGSizeMake(size.width, MIN(category + 300, maximum));
 }
 - (CGSize)intrinsicContentSize { return CGSizeMake(UIViewNoIntrinsicMetric, [self sizeThatFits:self.bounds.size].height); }
 - (void)layoutSubviews {
@@ -48,8 +70,11 @@
     self.heading.adjustsFontSizeToFitWidth = YES;
     self.detail.frame = CGRectMake(contentWidth * 0.52, 12, MAX(0, contentWidth * 0.48), 20);
     self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44);
-    self.scroll.frame = CGRectMake(0, 44, width, MAX(row, self.bounds.size.height - 66));
-    self.hint.frame = CGRectMake(14, self.bounds.size.height - 19, MAX(0, width - 28), 16);
+    CGFloat category = [self categoryHeightForWidth:width];
+    self.scroll.frame = CGRectMake(0, 44, width, MAX(row, category - 66));
+    self.hint.frame = CGRectMake(14, category - 19, MAX(0, width - 28), 16);
+    self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, self.bounds.size.height - category - 38));
+    self.cardNotice.frame = CGRectMake(14, MAX(category, self.bounds.size.height - 36), MAX(0, width - 28), 32);
     self.scroll.showsHorizontalScrollIndicator = !IDGridLayout;
     self.scroll.showsVerticalScrollIndicator = IDGridLayout;
     self.scroll.alwaysBounceHorizontal = !IDGridLayout;
@@ -127,7 +152,7 @@
         __weak IDCoordinator *coordinator = self.coordinator;
         NSString *identifier = group.identifier;
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-            if (!identifier || (IDFilteringReady && IDGrouping)) [coordinator selectIdentifier:identifier];
+            if (!identifier || ((IDContainedMode || IDFilteringReady) && IDGrouping)) [coordinator selectIdentifier:identifier];
         }] forControlEvents:UIControlEventTouchUpInside];
         if (group) {
             UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(pinGesture:)];
@@ -143,4 +168,5 @@
     [self invalidateIntrinsicContentSize]; [self setNeedsLayout]; [self layoutIfNeeded];
     self.scroll.contentOffset = CGPointMake(MIN(MAX(0, offset.x), MAX(0, self.scroll.contentSize.width - self.scroll.bounds.size.width)), MIN(MAX(0, offset.y), MAX(0, self.scroll.contentSize.height - self.scroll.bounds.size.height)));
 }
+#include "IDContainedUI.inc"
 @end

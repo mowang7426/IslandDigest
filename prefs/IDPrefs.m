@@ -82,7 +82,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 - (PSSpecifier *)toggle:(NSString *)title key:(NSString *)key {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:self set:@selector(setValue:specifier:) get:@selector(valueForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
     [item setProperty:key forKey:@"key"];
-    [item setProperty:@(![key isEqualToString:@"RememberFilter"]) forKey:@"default"];
+    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"])) forKey:@"default"];
     return item;
 }
 - (PSSpecifier *)choice:(NSString *)title key:(NSString *)key values:(NSArray *)values titles:(NSArray *)titles {
@@ -96,11 +96,12 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSString *key = [specifier propertyForKey:@"key"];
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
-    return @(IDPref(key, ![key isEqualToString:@"RememberFilter"]));
+    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
     IDWritePreference([specifier propertyForKey:@"key"], value);
     IDNotifyPreferencesChanged();
+    _specifiers = nil; [self reloadSpecifiers];
 }
 - (NSString *)diagnostics {
     NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
@@ -109,7 +110,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -117,10 +118,15 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.1.7 体验版" footer:@"只改变应用筛选面板，不重排系统通知卡片。保留回复、展开和清除；不生成 AI 摘要、不联网、不自动清除。设置实时生效，无需自动注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.1.8 体验版" footer:@"实验性插件内通知元数据卡片，尚不显示消息正文。原生列表默认保留，其回复和展开不变；不生成 AI 摘要、不联网、不自动清除。设置实时生效，无需自动注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
+    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"点击 QQ 等应用后，同一个面板下方显示该应用逐条通知的应用名称、图标、时间及隐藏占位。当前未验证逐条有效预览权限，标题、副标题和正文全部隐藏；这不是消息正文预览。最多 160 条。默认保留原生列表以查看实际消息、回复及展开。隐藏开关仅在插件内模式开启时可用，接口不匹配、枚举未知或达到上限时保留原生；退出、关闭或异常时恢复。隐藏不是清除。若开启隐藏，将无法在原生列表直接查看正文，请随时在此关闭隐藏。"]];
+    [items addObject:[self toggle:@"插件内显示通知卡片" key:@"ContainedMode"]];
+    PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
+    [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
+    [items addObject:hide];
     [items addObject:[self group:@"手动清理通知" footer:@"点击面板垃圾桶：选中应用只清理该应用；全部则处理全部应用。两种范围始终先确认，系统真实清除不可撤销。仅处理点击时的快照，新到通知不纳入。不自动/定时清理。关键、受保护、不可清理或保护能力未知的通知跳过；接口或解锁状态无法验证时按钮停用，原因显示在面板与诊断中。应用筛选不会扩大清理范围。"]];
     [items addObject:[self toggle:@"启用手动通知清理（始终确认）" key:@"EnableClearing"]];
     [items addObject:[self group:@"面板布局与排序" footer:@"默认保留横向紧凑胶囊；网格最多显示三行，超出后在面板内部滚动。置顶应用总是优先，其余按所选方式排序；相同项使用固定应用标识打破平局。"]];
@@ -135,7 +141,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     refresh.buttonAction = @selector(refreshStatus); [items addObject:refresh];
     PSSpecifier *retry = [PSSpecifier preferenceSpecifierNamed:@"重试初始化 / 恢复分组" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     retry.buttonAction = @selector(retry); [items addObject:retry];
-    [items addObject:[self group:@"兼容性与体验版边界" footer:@"0.1.5 已获用户确认可用；0.1.7 新交互仍需你的 iOS 17 + Relaxin 真机验收。私有通知接口可能因系统小版本而异。Relaxin 使用原生 RootHide 包；Rootless 仅供其他 Rootless 环境。设置入口依赖 PreferenceLoader。hooks-installed 不等同于运行验证通过。"]];
+    [items addObject:[self group:@"兼容性与体验版边界" footer:@"0.1.5 已获用户确认可用；0.1.8 为元数据卡片体验版，尚未完成真实消息预览；新交互仍需你的 iOS 17 + Relaxin 真机验收。私有通知接口可能因系统小版本而异。Relaxin 使用原生 RootHide 包；Rootless 仅供其他 Rootless 环境。设置入口依赖 PreferenceLoader。hooks-installed 不等同于运行验证通过。"]];
     _specifiers = items; return _specifiers;
 }
 - (void)refreshStatus { _specifiers = nil; [self reloadSpecifiers]; }

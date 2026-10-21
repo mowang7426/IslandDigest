@@ -21,10 +21,10 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.1.7'
+assert info['CFBundleVersion'] == '0.1.8'
 assert 'preferenceloader' in (root/'control').read_text()
 assert plistlib.loads((root/'IslandDigest.plist').read_bytes())['Filter']['Bundles'] == ['com.apple.springboard']
-print('PASS 0.1.7 portable source/config contracts (not runtime validation)')
+print('PASS 0.1.8 portable source/config contracts (not runtime validation)')
 
 ui = (root / 'IDDigestUI.inc').read_text()
 for key in ('PinnedApps', 'SortMode', 'LayoutMode', 'RememberFilter'):

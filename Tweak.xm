@@ -11,15 +11,17 @@
 #import "IDShared.h"
 #import "IDExperienceLogic.h"
 #import "IDClearLogic.h"
+#import "IDContainedLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO;
+static BOOL IDContainedMode = YES, IDHideNative = NO;
 static NSInteger IDSortMode;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.1.7";
+    IDDiagnostics[@"version"] = @"0.1.8";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -34,6 +36,8 @@ static void IDLoadOptions(void) {
     IDShowCounts = IDPref(@"ShowCounts", YES);
     IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
+    IDContainedMode = IDPref(@"ContainedMode", YES);
+    IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
     IDSortMode = [@[@"recent", @"count", @"name"] indexOfObject:IDStringOption(@"SortMode", @[@"recent", @"count", @"name"], @"recent")];
     IDOptionsRevision++;
 }
@@ -90,7 +94,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Preferences/IslandDigest-0.1.7.startup-pending";
+    return "/var/mobile/Library/Preferences/IslandDigest-0.1.8.startup-pending";
 #endif
 }
 
@@ -130,17 +134,23 @@ static NSArray *IDItems(id object) {
     return @[];
 }
 
-static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
-    if (!object || depth > 8) return;
+static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
+    if (!object) return YES;
+    if (depth > 8 || requests.count >= 4096) return NO;
     if (IDMethod(object_getClass(object), "sectionIdentifier", "@", 2)) {
         [requests addObject:object];
-        return;
+        return YES;
     }
+    BOOL collection = [object isKindOfClass:NSDictionary.class] || [object isKindOfClass:NSArray.class]
+        || [object isKindOfClass:NSSet.class] || [object isKindOfClass:NSOrderedSet.class];
+    if (!collection) return NO;
     NSArray *items = [object isKindOfClass:NSDictionary.class] ? [object allValues] : IDItems(object);
-    for (id item in items) IDCollectRequests(item, requests, depth + 1);
+    for (id item in items) if (!IDCollectRequests(item, requests, depth + 1)) return NO;
+    return YES;
 }
 
 #include "IDClearSupport.inc"
+#include "IDContainedSupport.inc"
 
 @interface IDGroup : NSObject
 @property(nonatomic, copy) NSString *identifier;
@@ -163,6 +173,12 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UIButton *clearButton;
 @property(nonatomic, strong) UIScrollView *scroll;
 @property(nonatomic, strong) UIView *stack;
+@property(nonatomic, strong) UIScrollView *cardScroll;
+@property(nonatomic, strong) UIStackView *cardStack;
+@property(nonatomic, strong) UILabel *cardNotice;
+- (void)showCards;
+- (void)dropCards;
+- (CGFloat)categoryHeightForWidth:(CGFloat)width;
 @property(nonatomic, weak) IDCoordinator *coordinator;
 - (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected;
 @end
@@ -177,6 +193,16 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) id container;
 @property(nonatomic, strong) id configuration;
 @property(nonatomic, copy) NSArray<IDGroup *> *groups;
+@property(nonatomic, copy) NSArray<NSDictionary *> *cards;
+@property(nonatomic, copy) NSArray<NSDictionary *> *renderedCards;
+@property(nonatomic) BOOL enumerationReliable;
+@property(nonatomic, weak) UIView *hiddenNativeList;
+@property(nonatomic) BOOL nativeWasHidden;
+@property(nonatomic, strong) NSObject *nativeHideToken;
+@property(nonatomic, copy) NSString *nativeHideReason;
+- (void)restoreNativeList;
+- (void)updateNativeListVisibility;
+- (void)dropContainedContent;
 @property(nonatomic, copy) NSString *selected;
 @property(nonatomic, copy) NSString *renderedSelection;
 @property(nonatomic, copy) NSString *desiredSelection;
@@ -223,6 +249,7 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @end
 
 static char IDCoordinatorKey;
+static char IDNativeHideOwnerKey;
 static NSHashTable *IDOwners;
 static BOOL IDRefreshPending;
 static BOOL IDFilteringReady;
@@ -258,6 +285,13 @@ static void IDScheduleRefresh(void) {
             if (state.active) [state refresh];
         }
     });
+}
+
+static void IDRedactContainedNow(void) {
+    void (^redact)(void) = ^{
+        for (id owner in IDOwners.allObjects) [IDState(owner) dropContainedContent];
+    };
+    if (NSThread.isMainThread) redact(); else dispatch_async(dispatch_get_main_queue(), redact);
 }
 
 #include "IDDigestUI.inc"
@@ -296,6 +330,22 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 #include "IDClearCoordinator.inc"
+#include "IDContainedCoordinator.inc"
+
+- (void)dealloc {
+    UIView *native = _hiddenNativeList;
+    BOOL original = _nativeWasHidden;
+    NSObject *token = _nativeHideToken;
+    // A delayed dealloc must not restore a view already claimed by another owner.
+    void (^restore)(void) = ^{
+        if (native && token && objc_getAssociatedObject(native, &IDNativeHideOwnerKey) == token) {
+            native.hidden = original;
+            objc_setAssociatedObject(native, &IDNativeHideOwnerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    };
+    if (NSThread.isMainThread) restore();
+    else if (native) dispatch_async(dispatch_get_main_queue(), restore);
+}
 
 - (NSArray<IDGroup *> *)snapshot {
     id master = IDRead(self.owner, "masterList");
@@ -304,14 +354,22 @@ static BOOL IDSupplementaryReady(id owner) {
     if (!sectionObjects) sectionObjects = IDRead(master, "sectionLists");
     NSArray *sections = IDItems(sectionObjects);
     NSMutableSet *requests = [NSMutableSet new];
-    IDCollectRequests(IDRead(master, "allNotificationRequests"), requests, 0);
+    id allRequests = IDRead(master, "allNotificationRequests");
+    BOOL reliable = master && IDCollection(allRequests);
+    BOOL sectionsReliable = master && IDCollection(sectionObjects);
+    reliable = IDCollectRequests(allRequests, requests, 0) && reliable;
     IDDiagnostics[@"masterSeen"] = @(master != nil);
     IDDiagnostics[@"sections"] = @(sections.count);
     IDDiagnostics[@"enumerationSupported"] = @(sectionObjects != nil || IDMethod(object_getClass(master), "allNotificationRequests", "@", 2));
     for (id section in sections) {
-        IDCollectRequests(IDRead(section, "allNotificationRequests"), requests, 0);
-        IDCollectRequests(IDRead(section, "filteredNotificationRequests"), requests, 0);
+        id sectionRequests = IDRead(section, "allNotificationRequests");
+        id filteredRequests = IDRead(section, "filteredNotificationRequests");
+        if (!IDCollection(sectionRequests) || (self.filtered.count && !IDCollection(filteredRequests))) sectionsReliable = NO;
+        sectionsReliable = IDCollectRequests(sectionRequests, requests, 0) && sectionsReliable;
+        sectionsReliable = IDCollectRequests(filteredRequests, requests, 0) && sectionsReliable;
     }
+    self.enumerationReliable = reliable || sectionsReliable;
+    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected) : @[];
     NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
     for (id request in requests) {
         NSString *identifier = IDRead(request, "sectionIdentifier");
@@ -385,7 +443,7 @@ static BOOL IDSupplementaryReady(id owner) {
             self.filterReconcilePending = NO;
             NSMutableSet *excluded = [NSMutableSet new];
             for (IDGroup *group in self.groups) {
-                if (self.selected && !group.hasCriticalAlert && ![group.identifier isEqualToString:self.selected]) {
+                if (!IDContainedMode && self.selected && !group.hasCriticalAlert && ![group.identifier isEqualToString:self.selected]) {
                     [excluded addObject:group.identifier];
                 }
             }
@@ -416,7 +474,10 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)render {
     if (!self.panel.isViewLoaded) return;
+    [self updateNativeListVisibility];
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
+    [(IDDigestView *)self.panel.view showCards];
+    self.renderedCards = self.cards;
     self.renderedSelection = self.selected;
     self.renderedRevision = IDOptionsRevision;
     [self updatePanelGeometry];
@@ -450,6 +511,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)endAppearance {
+    [self dropContainedContent];
     [self cancelClear];
     self.active = NO;
     self.dismissed = YES;
@@ -489,6 +551,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)recover {
+    [self dropContainedContent];
     [self cancelClear];
     if (self.recoveryAttempts >= 3) return;
     self.recoveryAttempts += 1;
@@ -534,6 +597,7 @@ static BOOL IDSupplementaryReady(id owner) {
     @try {
         self.openingPending = NO; // A user tap wins over an already queued first-appearance refresh.
         self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
+        if (IDContainedMode) self.groups = [self snapshot];
         self.desiredSelection = self.selected;
         IDWritePreference(@"DesiredApp", IDRememberFilter ? self.desiredSelection : nil);
         if (![self applyFilter]) {
@@ -571,7 +635,7 @@ static BOOL IDSupplementaryReady(id owner) {
     self.updating = YES;
     @try {
         NSArray<IDGroup *> *groups = [self snapshot];
-        BOOL unchanged = self.groups.count == groups.count;
+        BOOL unchanged = self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
         for (NSUInteger index = 0; index < groups.count; index++) {
             IDGroup *group = groups[index];
@@ -594,25 +658,36 @@ static BOOL IDSupplementaryReady(id owner) {
         if (self.openingPending) {
             self.openingPending = NO;
             self.selected = IDRememberFilter ? self.desiredSelection : nil;
+            if (IDContainedMode) self.groups = groups = [self snapshot];
             selectionExists = self.selected == nil;
             for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.selected]) selectionExists = YES;
         }
         BOOL desiredExists = self.desiredSelection == nil;
         for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.desiredSelection]) desiredExists = YES;
         if (!desiredExists) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
-        if (!selectionExists) { [self cancelClear]; self.selected = nil; }
+        if (!selectionExists) {
+            [self cancelClear]; self.selected = nil;
+            if (IDContainedMode) self.groups = groups = [self snapshot];
+        }
         if (![self applyFilter]) {
             [self disable];
             return;
         }
-        if (groups.count == 0) {
+        if (groups.count == 0 && !IDContainedMode) {
             if (self.inserted) [self recover];
             BOOL supported = [IDDiagnostics[@"enumerationSupported"] boolValue];
             IDStatus(supported ? @"waiting-notifications" : @"enumeration-unavailable",
                 supported ? @"控制器已出现；目前未读到通知" : @"控制器已出现，但当前系统的通知枚举接口不可用");
             return;
         }
-        if (!self.container && !self.inserted && !IDSupplementaryReady(self.owner)) {
+        if (IDContainedMode && self.inserted && !self.overlay) {
+            [self recover];
+            if (self.inserted) return;
+            self.container = nil; self.configuration = nil; self.panel = nil;
+            // recover drops strings; refill only from the current native snapshot.
+            self.groups = groups = [self snapshot];
+        }
+        if (!self.container && !self.inserted && (IDContainedMode || !IDSupplementaryReady(self.owner))) {
             // Public UIKit fallback: no notification cells, requests or delegates replaced.
             self.panel = [IDDigestController new];
             self.panel.coordinator = self;
@@ -635,6 +710,7 @@ static BOOL IDSupplementaryReady(id owner) {
             self.inserted = YES;
         }
         if (self.overlay) {
+            [self updateNativeListVisibility];
             if (!unchanged || self.renderedRevision != IDOptionsRevision || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) [self render];
             [self updatePanelGeometry];
             IDDiagnostics[@"presentation"] = @"UIKit-safe-area";
@@ -716,7 +792,10 @@ static BOOL IDSupplementaryReady(id owner) {
         IDDiagnostics[@"visibleOwnerSeen"] = @YES;
         IDScheduleRefresh(); // Never insert UI synchronously from a layout callback.
     }
-    if (state.active) [state updatePanelGeometry];
+    if (state.active) {
+        [state updatePanelGeometry];
+        [state updateNativeListVisibility];
+    }
 }
 - (void)viewWillDisappear:(BOOL)animated {
     IDCoordinator *state = IDState(self);
@@ -747,11 +826,22 @@ static BOOL IDSupplementaryReady(id owner) {
 %end
 %end
 
+%group IDPrivacy
+%hook NCNotificationStructuredListViewController
+- (void)setDeviceAuthenticated:(BOOL)authenticated {
+    // Drop previous strings before native authentication state changes.
+    if (!authenticated) IDRedactContainedNow();
+    %orig;
+    IDScheduleRefresh();
+}
+%end
+%end
+
 %group IDFilter
 %hook NCNotificationStructuredListViewController
 - (BOOL)notificationMasterList:(id)master shouldFilterNotificationRequest:(id)request {
     BOOL original = %orig;
-    NSString *selected = IDState(self).selected;
+    NSString *selected = IDContainedMode ? nil : IDState(self).selected;
     if (original || !selected) return original;
     if (IDMethod(object_getClass(request), "isCriticalAlert", "B", 2)
         && ((BOOL (*)(id, SEL))objc_msgSend)(request, sel_registerName("isCriticalAlert"))) return NO;
@@ -794,6 +884,10 @@ static void IDInstallHooks(void) {
         && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 2, "@")
         && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 3, "B");
     IDOwners = [NSHashTable weakObjectsHashTable];
+    if (IDMethod(owner, "setDeviceAuthenticated:", "v", 3)
+        && IDArgument(owner, "setDeviceAuthenticated:", 2, "B")) {
+        %init(IDPrivacy);
+    }
     if (IDFilteringReady) {
         %init(IDFilter);
     }
@@ -818,6 +912,8 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
             [state cancelClear]; state.clearMessage = nil;
+            if (!IDContainedMode || !IDEnabled || !IDGrouping || !state.active) [state dropContainedContent];
+            if (!IDHideNative) [state restoreNativeList];
             if (retry) {
                 state.recoveryAttempts = 0;
                 [state recover];
@@ -843,6 +939,10 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         IDLoadOptions();
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataWillBecomeUnavailable
+            object:nil queue:nil usingBlock:^(NSNotification *notification) { IDRedactContainedNow(); }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataDidBecomeAvailable
+            object:nil queue:nil usingBlock:^(NSNotification *notification) { IDScheduleRefresh(); }];
         IDStatus(@"constructor-reached", @"SpringBoard 已加载本插件；尚未安装控制器钩子");
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, IDPreferenceChanged,
             CFSTR("com.local.islanddigest/changed"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
