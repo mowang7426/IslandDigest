@@ -11,6 +11,8 @@
 @interface IDPinnedAppsController : PSListController
 @end
 @interface IDPrefsController : PSListController
+@property(nonatomic) NSUInteger layoutChangeGeneration;
+@property(nonatomic) BOOL layoutChangePending;
 @end
 
 static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
@@ -92,14 +94,49 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [item setValues:values titles:titles];
     return item;
 }
+- (PSSpecifier *)slider:(NSString *)title key:(NSString *)key low:(double)low high:(double)high fallback:(double)fallback step:(double)step {
+    PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:self set:@selector(setValue:specifier:) get:@selector(valueForSpecifier:) detail:Nil cell:PSSliderCell edit:Nil];
+    [item setProperty:key forKey:@"key"]; [item setProperty:@(low) forKey:@"min"];
+    [item setProperty:@(high) forKey:@"max"]; [item setProperty:@(fallback) forKey:@"default"];
+    [item setProperty:@(step) forKey:@"step"]; [item setProperty:@YES forKey:@"showValue"];
+    [item setProperty:@YES forKey:@"isContinuous"];
+    return item;
+}
+- (void)resetPanelLayout {
+    self.layoutChangeGeneration++;
+    self.layoutChangePending = NO;
+    for (NSString *key in @[@"PanelTopOffset", @"PanelSideInset", @"PanelMaxHeight"]) IDWritePreference(key, nil);
+    IDNotifyPreferencesChanged(); _specifiers = nil; [self reloadSpecifiers];
+}
 - (id)valueForSpecifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
+    if ([key hasPrefix:@"Panel"]) return @(IDNumberOption(key, [[specifier propertyForKey:@"default"] doubleValue],
+        [[specifier propertyForKey:@"min"] doubleValue], [[specifier propertyForKey:@"max"] doubleValue]));
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
     return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
-    IDWritePreference([specifier propertyForKey:@"key"], value);
+    NSString *key = [specifier propertyForKey:@"key"];
+    if ([key hasPrefix:@"Panel"]) {
+        double low = [[specifier propertyForKey:@"min"] doubleValue], high = [[specifier propertyForKey:@"max"] doubleValue];
+        double number = [value doubleValue], step = [[specifier propertyForKey:@"step"] doubleValue];
+        if (!isfinite(number) || step <= 0) return;
+        number = fmin(high, fmax(low, round(number/step)*step));
+        if (fabs([[self valueForSpecifier:specifier] doubleValue]-number)<0.5) return;
+        IDWritePreference(key, @(number));
+        if (!self.layoutChangePending) {
+            self.layoutChangePending = YES;
+            NSUInteger generation = self.layoutChangeGeneration;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (generation != self.layoutChangeGeneration) return;
+                self.layoutChangePending = NO;
+                IDNotifyPreferencesChanged();
+            });
+        }
+        return; // Do not rebuild Settings cells while the slider is being dragged.
+    }
+    IDWritePreference(key, value);
     IDNotifyPreferencesChanged();
     _specifiers = nil; [self reloadSpecifiers];
 }
@@ -110,7 +147,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -118,7 +155,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.1.8 体验版" footer:@"实验性插件内通知元数据卡片，尚不显示消息正文。原生列表默认保留，其回复和展开不变；不生成 AI 摘要、不联网、不自动清除。设置实时生效，无需自动注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.1.9 体验版" footer:@"实验性插件内通知元数据卡片，尚不显示消息正文。原生列表默认保留，其回复和展开不变；不生成 AI 摘要、不联网、不自动清除。设置实时生效，无需自动注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
@@ -127,6 +164,12 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
     [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
     [items addObject:hide];
+    [items addObject:[self group:@"面板位置与大小（单位：点）" footer:@"锁屏与通知中心共用。顶部偏移从窗口安全区与通知控制器的交集顶部向下计算；默认 220 点是保守预留，不是已验证的时钟避让，UIKit 安全区本身不含锁屏时钟。不会移动或读取时钟视图。如仍挡住时间，请增加顶部偏移。左右边距控制宽度；高度是上限，卡片少时自动缩小。旋转后按实际窗口重新限界，底部预留 110 点给快捷按钮；极小空间保留原生列表。拖动约每 120ms 合并更新，无需注销。"]];
+    [items addObject:[self slider:@"顶部向下偏移（默认 220）" key:@"PanelTopOffset" low:0 high:420 fallback:220 step:10]];
+    [items addObject:[self slider:@"左右边距（默认 8）" key:@"PanelSideInset" low:8 high:64 fallback:8 step:2]];
+    [items addObject:[self slider:@"面板最大高度（默认 360）" key:@"PanelMaxHeight" low:240 high:600 fallback:360 step:10]];
+    PSSpecifier *resetLayout = [PSSpecifier preferenceSpecifierNamed:@"恢复默认位置与大小" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
+    resetLayout.buttonAction = @selector(resetPanelLayout); [items addObject:resetLayout];
     [items addObject:[self group:@"手动清理通知" footer:@"点击面板垃圾桶：选中应用只清理该应用；全部则处理全部应用。两种范围始终先确认，系统真实清除不可撤销。仅处理点击时的快照，新到通知不纳入。不自动/定时清理。关键、受保护、不可清理或保护能力未知的通知跳过；接口或解锁状态无法验证时按钮停用，原因显示在面板与诊断中。应用筛选不会扩大清理范围。"]];
     [items addObject:[self toggle:@"启用手动通知清理（始终确认）" key:@"EnableClearing"]];
     [items addObject:[self group:@"面板布局与排序" footer:@"默认保留横向紧凑胶囊；网格最多显示三行，超出后在面板内部滚动。置顶应用总是优先，其余按所选方式排序；相同项使用固定应用标识打破平局。"]];
@@ -141,7 +184,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     refresh.buttonAction = @selector(refreshStatus); [items addObject:refresh];
     PSSpecifier *retry = [PSSpecifier preferenceSpecifierNamed:@"重试初始化 / 恢复分组" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     retry.buttonAction = @selector(retry); [items addObject:retry];
-    [items addObject:[self group:@"兼容性与体验版边界" footer:@"0.1.5 已获用户确认可用；0.1.8 为元数据卡片体验版，尚未完成真实消息预览；新交互仍需你的 iOS 17 + Relaxin 真机验收。私有通知接口可能因系统小版本而异。Relaxin 使用原生 RootHide 包；Rootless 仅供其他 Rootless 环境。设置入口依赖 PreferenceLoader。hooks-installed 不等同于运行验证通过。"]];
+    [items addObject:[self group:@"兼容性与体验版边界" footer:@"0.1.5 已获用户确认可用；用户已确认 0.1.8 在 iOS17 + Relaxin 可隐藏原生列表，但卡片区域空白；0.1.9 修正布局，尚未完成真实消息预览；新交互仍需你的 iOS 17 + Relaxin 真机验收。私有通知接口可能因系统小版本而异。Relaxin 使用原生 RootHide 包；Rootless 仅供其他 Rootless 环境。设置入口依赖 PreferenceLoader。hooks-installed 不等同于运行验证通过。"]];
     _specifiers = items; return _specifiers;
 }
 - (void)refreshStatus { _specifiers = nil; [self reloadSpecifiers]; }

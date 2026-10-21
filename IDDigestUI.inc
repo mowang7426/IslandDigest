@@ -10,9 +10,13 @@
     self.detail.adjustsFontSizeToFitWidth = YES; [self addSubview:self.detail];
     self.hint = [UILabel new]; self.hint.text = @"长按应用置顶 / 取消 · 点按筛选"; self.hint.textColor = UIColor.secondaryLabelColor;
     self.hint.adjustsFontSizeToFitWidth = YES; [self addSubview:self.hint];
-    self.scroll = [UIScrollView new]; [self addSubview:self.scroll];
+    self.scroll = [UIScrollView new]; self.scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
     self.cardScroll = [UIScrollView new]; self.cardScroll.alwaysBounceVertical = YES;
+    // This is already an explicitly bounded sub-region, not a system full-screen list.
+    self.cardScroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.cardScroll.contentInset = UIEdgeInsetsZero;
     self.cardScroll.accessibilityLabel = @"插件内通知元数据卡片"; [self addSubview:self.cardScroll];
     self.cardStack = [UIStackView new]; self.cardStack.axis = UILayoutConstraintAxisVertical;
     self.cardStack.spacing = 10; self.cardStack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -52,10 +56,11 @@
 - (CGSize)sizeThatFits:(CGSize)size {
     CGFloat category = [self categoryHeightForWidth:size.width];
     if (!IDContainedMode) return CGSizeMake(size.width, category);
-    CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
-    if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
-    CGFloat maximum = MAX(category, MIN(540, ownerHeight * 0.68));
-    return CGSizeMake(size.width, MIN(category + 300, maximum));
+    CGFloat contentWidth = MAX(1, size.width - 28);
+    CGSize measured = [self.cardStack systemLayoutSizeFittingSize:CGSizeMake(contentWidth, UILayoutFittingCompressedSize.height)
+        withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGFloat content = MAX(44, measured.height + 16);
+    return CGSizeMake(size.width, MIN(category + 38 + content, IDPanelMaxHeight));
 }
 - (CGSize)intrinsicContentSize { return CGSizeMake(UIViewNoIntrinsicMetric, [self sizeThatFits:self.bounds.size].height); }
 - (void)layoutSubviews {
@@ -71,7 +76,8 @@
     self.detail.frame = CGRectMake(contentWidth * 0.52, 12, MAX(0, contentWidth * 0.48), 20);
     self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44);
     CGFloat category = [self categoryHeightForWidth:width];
-    self.scroll.frame = CGRectMake(0, 44, width, MAX(row, category - 66));
+    if (IDContainedMode) category = MIN(category, MAX(66, self.bounds.size.height - 38 - 88));
+    self.scroll.frame = CGRectMake(0, 44, width, MAX(0, category - 66));
     self.hint.frame = CGRectMake(14, category - 19, MAX(0, width - 28), 16);
     self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, self.bounds.size.height - category - 38));
     self.cardNotice.frame = CGRectMake(14, MAX(category, self.bounds.size.height - 36), MAX(0, width - 28), 32);

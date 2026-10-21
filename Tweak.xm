@@ -12,16 +12,18 @@
 #import "IDExperienceLogic.h"
 #import "IDClearLogic.h"
 #import "IDContainedLogic.h"
+#import "IDLayoutLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
+static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
 static NSInteger IDSortMode;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.1.8";
+    IDDiagnostics[@"version"] = @"0.1.9";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -39,6 +41,9 @@ static void IDLoadOptions(void) {
     IDContainedMode = IDPref(@"ContainedMode", YES);
     IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
     IDSortMode = [@[@"recent", @"count", @"name"] indexOfObject:IDStringOption(@"SortMode", @[@"recent", @"count", @"name"], @"recent")];
+    IDPanelTopOffset = IDNumberOption(@"PanelTopOffset", 220, 0, 420);
+    IDPanelSideInset = IDNumberOption(@"PanelSideInset", 8, 8, 64);
+    IDPanelMaxHeight = IDNumberOption(@"PanelMaxHeight", 360, 240, 600);
     IDOptionsRevision++;
 }
 
@@ -94,7 +99,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Preferences/IslandDigest-0.1.8.startup-pending";
+    return "/var/mobile/Library/Preferences/IslandDigest-0.1.9.startup-pending";
 #endif
 }
 
@@ -176,6 +181,8 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UIScrollView *cardScroll;
 @property(nonatomic, strong) UIStackView *cardStack;
 @property(nonatomic, strong) UILabel *cardNotice;
+@property(nonatomic) NSUInteger builtCardCount;
+- (BOOL)cardsReadyForNativeHide;
 - (void)showCards;
 - (void)dropCards;
 - (CGFloat)categoryHeightForWidth:(CGFloat)width;
@@ -211,10 +218,11 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic) NSUInteger renderedRevision;
 @property(nonatomic, strong) NSLayoutConstraint *overlayHeight;
 @property(nonatomic, strong) NSLayoutConstraint *overlayTop;
+@property(nonatomic, strong) NSLayoutConstraint *overlayLeft;
+@property(nonatomic, strong) NSLayoutConstraint *overlayWidth;
 @property(nonatomic) BOOL geometryUpdating;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
 @property(nonatomic) BOOL overlay;
-@property(nonatomic) UIEdgeInsets savedInsets;
 @property(nonatomic) BOOL inserted;
 @property(nonatomic) BOOL updating;
 @property(nonatomic) BOOL applyingFilter;
@@ -474,13 +482,16 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)render {
     if (!self.panel.isViewLoaded) return;
-    [self updateNativeListVisibility];
+    // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
     [(IDDigestView *)self.panel.view showCards];
     self.renderedCards = self.cards;
     self.renderedSelection = self.selected;
     self.renderedRevision = IDOptionsRevision;
     [self updatePanelGeometry];
+    [self.owner.view layoutIfNeeded];
+    [self.panel.view layoutIfNeeded];
+    [self updateNativeListVisibility];
     [self updateClearButton];
 }
 
@@ -488,15 +499,29 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.geometryUpdating || !self.panel.isViewLoaded) return;
     self.geometryUpdating = YES;
     @try {
-        UIEdgeInsets safe = self.owner.view.safeAreaInsets;
-        CGFloat width = MAX(1, self.owner.view.bounds.size.width - safe.left - safe.right - 16);
-        CGFloat height = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(width, 0)].height;
-        CGSize size = CGSizeMake(width, height);
+        UIView *owner = self.owner.view;
+        UIWindow *window = owner.window;
+        // Window safe bounds are independent of the notification owner's additional
+        // insets. Intersect after conversion: owner may not fill the window.
+        CGRect safe = window ? UIEdgeInsetsInsetRect(window.bounds, window.safeAreaInsets)
+                             : UIEdgeInsetsInsetRect(owner.bounds, owner.safeAreaInsets);
+        if (window) safe = [owner convertRect:safe fromView:window];
+        safe = CGRectIntersection(owner.bounds, safe);
+        if (CGRectIsNull(safe) || CGRectIsEmpty(safe)) safe = CGRectZero;
+        IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
+            CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
+            IDPanelMaxHeight, IDPanelMaxHeight);
+        CGFloat preferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
+        IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
+            CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
+            preferred, IDPanelMaxHeight);
+        CGSize size = CGSizeMake(rect.width, rect.height);
         if (!CGSizeEqualToSize(self.panel.preferredContentSize, size)) self.panel.preferredContentSize = size;
-        if (self.overlay && (fabs(self.overlayHeight.constant - height) > 0.5 || fabs(self.overlayTop.constant + height) > 0.5)) {
-            self.overlayHeight.constant = height; self.overlayTop.constant = -height;
-            UIEdgeInsets insets = self.savedInsets; insets.top += height;
-            self.owner.additionalSafeAreaInsets = insets;
+        if (self.overlay) {
+            if (fabs(self.overlayHeight.constant-rect.height)>0.5) self.overlayHeight.constant=rect.height;
+            if (fabs(self.overlayTop.constant-rect.y)>0.5) self.overlayTop.constant=rect.y;
+            if (fabs(self.overlayLeft.constant-rect.x)>0.5) self.overlayLeft.constant=rect.x;
+            if (fabs(self.overlayWidth.constant-rect.width)>0.5) self.overlayWidth.constant=rect.width;
         }
     } @finally { self.geometryUpdating = NO; }
 }
@@ -561,7 +586,6 @@ static BOOL IDSupplementaryReady(id owner) {
         [self.panel willMoveToParentViewController:nil];
         [self.panel.view removeFromSuperview];
         [self.panel removeFromParentViewController];
-        self.owner.additionalSafeAreaInsets = self.savedInsets;
         self.inserted = NO;
         self.overlay = NO;
     }
@@ -691,29 +715,29 @@ static BOOL IDSupplementaryReady(id owner) {
             // Public UIKit fallback: no notification cells, requests or delegates replaced.
             self.panel = [IDDigestController new];
             self.panel.coordinator = self;
-            self.savedInsets = self.owner.additionalSafeAreaInsets;
-            UIEdgeInsets insets = self.savedInsets;
-            insets.top += 112;
-            self.owner.additionalSafeAreaInsets = insets;
             [self.owner addChildViewController:self.panel];
             UIView *view = self.panel.view;
             view.translatesAutoresizingMaskIntoConstraints = NO;
             [self.owner.view addSubview:view];
             [NSLayoutConstraint activateConstraints:@[
-                (self.overlayTop = [view.topAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.topAnchor constant:-112]),
-                [view.leadingAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.leadingAnchor constant:8],
-                [view.trailingAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.trailingAnchor constant:-8],
+                (self.overlayTop = [view.topAnchor constraintEqualToAnchor:self.owner.view.topAnchor constant:0]),
+                (self.overlayLeft = [view.leadingAnchor constraintEqualToAnchor:self.owner.view.leadingAnchor constant:8]),
+                (self.overlayWidth = [view.widthAnchor constraintEqualToConstant:1]),
                 (self.overlayHeight = [view.heightAnchor constraintEqualToConstant:112])
             ]];
             [self.panel didMoveToParentViewController:self.owner];
             self.overlay = YES;
             self.inserted = YES;
+            // The detached-view cache is not proof that this new view has cards.
+            [self render];
         }
         if (self.overlay) {
-            [self updateNativeListVisibility];
-            if (!unchanged || self.renderedRevision != IDOptionsRevision || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) [self render];
+            IDDigestView *digest = (IDDigestView *)self.panel.view;
+            if ((IDContainedMode && digest.builtCardCount != self.cards.count) || !unchanged || self.renderedRevision != IDOptionsRevision || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) [self render];
             [self updatePanelGeometry];
-            IDDiagnostics[@"presentation"] = @"UIKit-safe-area";
+            [self.owner.view layoutIfNeeded];
+            [self updateNativeListVisibility];
+            IDDiagnostics[@"presentation"] = @"UIKit-window-bounded";
             IDStatus(@"panel-visible", IDFilteringReady ? @"应用分组面板已加入可见控制器" : @"分组面板可见；原生筛选接口不兼容，应用按钮停用");
             return;
         }

@@ -58,13 +58,18 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
-    if expected_version == "0.1.8":
+    if expected_version in ("0.1.8", "0.1.9"):
         for key in (b"ContainedMode", b"HideNativeList", b"containedEnabled", b"hideNativeRequested",
                     b"nativeHideSupported", b"nativeHidden", b"nativeHideReason", b"previewPolicyReason",
                     b"cardsRendered", b"cardsRedacted"):
             assert key in binary and key in prefs_binary, ("missing contained contract", key)
         assert b"effective-per-request-policy-unverified; fail-closed" in binary
-        assert b"IslandDigest-0.1.8.startup-pending" in binary
+        assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
+    if expected_version == "0.1.9":
+        for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
+            assert key in binary and key in prefs_binary, ("missing layout contract", key)
+        for selector in (b"cardsReadyForNativeHide", b"setContentInsetAdjustmentBehavior:", b"builtCardCount"):
+            assert selector in binary, ("missing readiness contract", selector)
     check_binary(binary, expected_install_name, scheme, "tweak")
     # Theos bundle.mk deliberately emits MH_DYLIB with its full bundle executable
     # install name (unlike tweak.mk's @loader_path/@rpath identity).

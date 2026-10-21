@@ -28,7 +28,8 @@
     IDDigestView *digest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
     BOOL cardViewportVisible = digest.cardScroll.window && !digest.cardScroll.hidden
         && digest.cardScroll.bounds.size.height >= 44 && digest.cardScroll.bounds.size.width >= 44;
-    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible;
+    BOOL cardsReady = [digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards];
+    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible && cardsReady;
     BOOL shouldHide = IDContainedShouldHide(IDEnabled, IDGrouping, IDContainedMode, IDHideNative,
         self.active, self.disabled, supported, self.panel.view.window && !self.panel.view.hidden, self.cards.count);
     if (IDContainedMustRestore(self.hiddenNativeList != candidate, shouldHide)) [self restoreNativeList];
@@ -51,12 +52,15 @@
         : !compatible ? @"原生列表接口不匹配；保留原生列表"
         : !separate ? @"面板未独立挂载；保留原生列表"
         : !cardViewportVisible ? @"卡片可视空间不足；保留原生列表"
+        : !cardsReady ? @"卡片尚未完成可见布局；保留原生列表"
         : shouldHide ? @"已隐藏原生列表；未删除任何通知"
         : @"面板不可见或无卡片；保留原生列表";
     IDDiagnostics[@"nativeHideReason"] = self.nativeHideReason;
     IDDiagnostics[@"previewPolicyReason"] = @"effective-per-request-policy-unverified; fail-closed";
-    IDDiagnostics[@"cardsRendered"] = @(IDContainedMode ? self.cards.count : 0);
-    IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? self.cards.count : 0);
+    IDDiagnostics[@"cardsRendered"] = @(IDContainedMode ? digest.builtCardCount : 0);
+    IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? digest.builtCardCount : 0);
+    IDDiagnostics[@"cardsLayoutReady"] = @(cardsReady);
+    if (IDContainedMode) digest.cardNotice.text = [NSString stringWithFormat:@"元数据占位 · 正文预览未实现\n%@", self.nativeHideReason];
 }
 - (void)dropContainedContent {
     self.cards = @[];

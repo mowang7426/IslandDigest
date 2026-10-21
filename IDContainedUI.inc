@@ -1,4 +1,5 @@
 - (void)dropCards {
+    self.builtCardCount = 0;
     // Clear accessible strings as well as removing labels; no stale preview in AX.
     for (UIView *view in self.cardStack.arrangedSubviews.copy) {
         IDContainedClearView(view);
@@ -9,6 +10,7 @@
 - (UILabel *)cardLabel:(NSString *)text style:(UIFontTextStyle)style color:(UIColor *)color {
     UILabel *label = [UILabel new]; label.text = text; label.numberOfLines = 0;
     label.font = [UIFont preferredFontForTextStyle:style]; label.adjustsFontForContentSizeCategory = YES;
+    label.translatesAutoresizingMaskIntoConstraints = NO;
     label.textColor = color; return label;
 }
 - (NSString *)relativeCardDate:(NSDate *)date {
@@ -35,6 +37,9 @@
         [self.cardStack addArrangedSubview:heading];
         for (NSDictionary *card in cards) {
             UIView *shell = [UIView new]; shell.layer.cornerRadius = 16;
+            shell.translatesAutoresizingMaskIntoConstraints = NO;
+            shell.accessibilityIdentifier = @"IDContainedCard";
+            [shell.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;
             shell.backgroundColor = [UIColor.secondaryLabelColor colorWithAlphaComponent:0.08];
             UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisVertical; content.spacing = 5;
             content.translatesAutoresizingMaskIntoConstraints = NO; [shell addSubview:content];
@@ -72,5 +77,38 @@
     }
     if (state.cards.count >= IDContainedLimit) [self.cardStack addArrangedSubview:[self cardLabel:@"仅展示当前范围最近 160 条；较早通知仍在原生列表。" style:UIFontTextStyleFootnote color:UIColor.secondaryLabelColor]];
     self.cardNotice.text = [NSString stringWithFormat:@"仅预览 · 未验证逐条预览策略，内容已隐藏\n%@", state.nativeHideReason ?: @"原生列表保留"];
+    self.builtCardCount = rendered;
     [self.cardStack setNeedsLayout];
+    [self.cardStack layoutIfNeeded];
+    [self invalidateIntrinsicContentSize];
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+    CGFloat maximum = MAX(0, self.cardScroll.contentSize.height - self.cardScroll.bounds.size.height);
+    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, self.cardScroll.contentOffset.y), maximum));
+}
+- (BOOL)cardsReadyForNativeHide {
+    if (!self.window || self.hidden || self.cardScroll.hidden || !self.builtCardCount
+        || self.builtCardCount != self.coordinator.cards.count
+        || self.cardScroll.bounds.size.height < 44 || self.cardScroll.bounds.size.width < 44
+        || self.cardStack.bounds.size.width < 44 || self.cardStack.bounds.size.height < 44) return NO;
+    NSUInteger valid = 0; BOOL visible = NO;
+    for (UIView *shell in self.cardStack.arrangedSubviews) {
+        if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"]) continue;
+        if (shell.hidden || shell.bounds.size.width < 44 || shell.bounds.size.height < 44
+            || !shell.accessibilityLabel.length) return NO;
+        BOOL readable = NO;
+        for (UIView *content in shell.subviews) {
+            if (![content isKindOfClass:UIStackView.class]) continue;
+            for (UIView *line in ((UIStackView *)content).arrangedSubviews) {
+                if ([line isKindOfClass:UILabel.class] && ((UILabel *)line).text.length
+                    && !line.hidden && line.bounds.size.width > 0 && line.bounds.size.height > 0) readable = YES;
+            }
+        }
+        if (!readable) return NO;
+        valid++;
+        CGRect frame = [shell convertRect:shell.bounds toView:self.cardScroll];
+        CGRect intersection = CGRectIntersection(frame, self.cardScroll.bounds);
+        if (!CGRectIsNull(intersection) && intersection.size.width >= 44 && intersection.size.height >= 22) visible = YES;
+    }
+    return valid == self.builtCardCount && visible;
 }
