@@ -7,7 +7,12 @@ crop=ImageEnhance.Contrast(crop).enhance(1.04)
 crop=ImageEnhance.Color(crop).enhance(1.05)
 out=Path('/var/minis/workspace/islanddigest-src/IslandDigest-0.1.4')
 for name,size in [('IslandDigest-icon.png',1024),('IslandDigest-icon@3x.png',180),('IslandDigest-icon@2x.png',120)]:
-    im=ImageOps.fit(crop,(size,size),method=Image.Resampling.LANCZOS,centering=(0.53,0.46))
+    fitted=ImageOps.fit(crop,(size,size),method=Image.Resampling.LANCZOS,centering=(0.53,0.46)).convert('RGBA')
+    # Keep the exact icon dimensions but reduce the visual subject below 0.2.1.
+    inset=max(1, round(size * 0.20))
+    inner=fitted.resize((size - 2 * inset, size - 2 * inset), Image.Resampling.LANCZOS)
+    im=Image.new('RGBA',(size,size),(0,0,0,0))
+    im.alpha_composite(inner,(inset,inset))
     im.save(out/name,'PNG',optimize=True)
 # PreferenceLoader resolves a package-level icon; retain identical high-res source-derived PNG.
 (out/'layout/Library/PreferenceLoader/Preferences/IslandDigest.png').write_bytes((out/'IslandDigest-icon.png').read_bytes())
