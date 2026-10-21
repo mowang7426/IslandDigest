@@ -812,6 +812,7 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
             if (retry) {
+                state.recoveryAttempts = 0;
                 [state recover];
                 if (state.inserted || state.filtered.count) continue;
                 state.disabled = NO;

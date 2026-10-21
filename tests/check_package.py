@@ -59,7 +59,9 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
     check_binary(binary, expected_install_name, scheme, "tweak")
-    check_binary(prefs_binary, None, scheme, "preferences")
+    # Theos bundle.mk deliberately emits MH_DYLIB with its full bundle executable
+    # install name (unlike tweak.mk's @loader_path/@rpath identity).
+    check_binary(prefs_binary, "/" + prefs_path, scheme, "preferences")
     print("PASS metadata, exact payload whitelist, PreferenceLoader registration, SpringBoard-only filter")
     print("SHA-256", hashlib.sha256(archive).hexdigest())
 
@@ -73,6 +75,7 @@ def check_binary(binary, expected_install_name, scheme, label):
         architectures.add(subtype & 0xFFFFFF)
         image = binary[offset:offset + size]
         assert struct.unpack_from("<I", image)[0] == 0xFEEDFACF
+        assert struct.unpack_from("<I", image, 12)[0] == 6, "Expected MH_DYLIB"
         command_count = struct.unpack_from("<I", image, 16)[0]
         command_offset = 32
         signature_offset = None
