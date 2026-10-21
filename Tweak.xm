@@ -15,7 +15,7 @@
 #import "IDLayoutLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
-static BOOL IDPreviewWhenUnlocked = YES;
+static BOOL IDPreviewWhenUnlocked = NO;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -37,7 +37,7 @@ static void IDLoadOptions(void) {
     IDEnabled = IDPref(@"Enabled", YES);
     IDGrouping = IDPref(@"Grouping", YES);
     IDShowCounts = IDPref(@"ShowCounts", YES);
-    IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", YES);
+    IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", NO);
     IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);

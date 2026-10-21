@@ -7,7 +7,8 @@ ui = (root/'IDContainedUI.inc').read_text()
 assert 'IDContainedMode = YES, IDHideNative = NO' in main
 assert 'IDPref(@"ContainedMode", YES)' in main
 assert 'IDPref(@"HideNativeList", NO) && IDContainedMode' in main
-assert 'IDPreviewWhenUnlocked' in main
+assert 'IDPreviewWhenUnlocked = NO' in main
+assert 'IDPref(@"AllowPreviewWhenUnlocked", NO)' in main
 assert 'application.protectedDataAvailable' in support
 assert 'IDRead(request, "options")' in support
 assert 'contentPreviewSetting remains intentionally uninterpreted' in support

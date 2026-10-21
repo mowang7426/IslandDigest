@@ -9,9 +9,10 @@ static BOOL IDCollection(id value) {
  * and no authoritative per-request mapping is exposed here. We therefore do
  * not guess enum values or use a native visibility flag as permission.
  *
- * The explicit user preference is an opt-in authorization for this plugin only.
- * It can never override an app's Never policy. Content is read only on the
- * main thread while SpringBoard's protected data is available and the owner
+ * The explicit, default-off user preference is an opt-in authorization for
+ * this plugin only. Because the system enum is unmapped, this opt-in may not
+ * preserve an individual app's Never setting; Settings warns about that limit.
+ * Content is read only on the main thread while SpringBoard's protected data is available and the owner
  * controller is visible (the authenticated/unlocked state). No body is read
  * while locked or when protected data is unavailable.
  */

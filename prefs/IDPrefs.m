@@ -84,7 +84,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 - (PSSpecifier *)toggle:(NSString *)title key:(NSString *)key {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:self set:@selector(setValue:specifier:) get:@selector(valueForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
     [item setProperty:key forKey:@"key"];
-    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"])) forKey:@"default"];
+    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"])) forKey:@"default"];
     return item;
 }
 - (PSSpecifier *)choice:(NSString *)title key:(NSString *)key values:(NSArray *)values titles:(NSArray *)titles {
@@ -114,7 +114,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
         [[specifier propertyForKey:@"min"] doubleValue], [[specifier propertyForKey:@"max"] doubleValue]));
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
-    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"])));
+    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
@@ -159,8 +159,8 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
-    [items addObject:[self toggle:@"解锁时显示通知预览（默认开启）" key:@"AllowPreviewWhenUnlocked"]];
-    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"仅当设备已解锁、受保护数据可用、拥有者界面可见且本开关开启时读取原生 title/subtitle/message。iOS 17 私有 contentPreviewSetting 的整型值缺少可核验枚举映射，因此不猜值；未知或 App Never 策略会保持“通知内容已隐藏”。此设置不能绕过系统或 App 的 Never 预览策略。锁定时不读取正文，锁定通知到达即同步清空已显示卡片。最多 160 条。原生列表默认保留。隐藏开关仅在插件内模式开启时可用，接口不匹配或布局不可用时保留原生。"]];
+    [items addObject:[self toggle:@"解锁时显示通知预览（默认关闭）" key:@"AllowPreviewWhenUnlocked"]];
+    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"仅当设备已解锁、受保护数据可用、拥有者界面可见且本开关开启时读取原生 title/subtitle/message。iOS 17 私有 contentPreviewSetting 的整型值缺少可核验枚举映射，因此不猜值；默认关闭，只有你明确开启后才允许解锁预览。该开关可能无法保持每个 App 的“永不显示预览”语义，请仅在理解风险时开启；锁屏仍始终隐藏。锁定时不读取正文，锁定通知到达即同步清空已显示卡片。最多 160 条。原生列表默认保留。隐藏开关仅在插件内模式开启时可用，接口不匹配或布局不可用时保留原生。"]];
     [items addObject:[self toggle:@"插件内显示通知卡片" key:@"ContainedMode"]];
     PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
     [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
