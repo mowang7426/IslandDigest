@@ -13,3 +13,6 @@ IslandDigest_LOGOS_DEFAULT_GENERATOR := internal
 IslandDigest_LDFLAGS := -Wl,-ld_classic -Wl,-no_fixup_chains
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+SUBPROJECTS += prefs
+include $(THEOS_MAKE_PATH)/aggregate.mk

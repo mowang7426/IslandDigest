@@ -36,14 +36,35 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
     data_name = next(name for name in members if name.startswith("data.tar"))
     with tarfile.open(fileobj=io.BytesIO(members[data_name])) as payload:
         files = [member for member in payload.getmembers() if member.isfile()]
-        assert len(files) == 2
-        assert all(member.name.lstrip("./").startswith(
-            prefix + "Library/MobileSubstrate/DynamicLibraries/") for member in files)
-        binary = payload.extractfile(next(member for member in files
-                                         if member.name.endswith(".dylib"))).read()
-        injection_filter = payload.extractfile(next(member for member in files
-                                                   if member.name.endswith(".plist"))).read()
-        assert b"com.apple.springboard" in injection_filter
+        paths = {member.name.lstrip("./"): member for member in files}
+        tweak_path = prefix + "Library/MobileSubstrate/DynamicLibraries/IslandDigest.dylib"
+        filter_path = prefix + "Library/MobileSubstrate/DynamicLibraries/IslandDigest.plist"
+        prefs_base = prefix + "Library/PreferenceBundles/IslandDigestPrefs.bundle/"
+        prefs_path = prefs_base + "IslandDigestPrefs"
+        info_path = prefs_base + "Info.plist"
+        entry_path = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.plist"
+        required = {tweak_path, filter_path, prefs_path, info_path, entry_path}
+        assert required <= paths.keys(), paths.keys()
+        assert all(path in required or (path.startswith(prefs_base) and
+                   path.endswith(("_CodeSignature/CodeResources",))) for path in paths), paths.keys()
+        assert "preferenceloader" in metadata
+        injection_filter = payload.extractfile(paths[filter_path]).read()
+        import plistlib
+        assert plistlib.loads(injection_filter)["Filter"]["Bundles"] == ["com.apple.springboard"]
+        info = plistlib.loads(payload.extractfile(paths[info_path]).read())
+        assert info["NSPrincipalClass"] == "IDPrefsController"
+        assert info["CFBundleVersion"] == expected_version
+        entry = plistlib.loads(payload.extractfile(paths[entry_path]).read())["entry"]
+        assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
+        binary = payload.extractfile(paths[tweak_path]).read()
+        prefs_binary = payload.extractfile(paths[prefs_path]).read()
+    check_binary(binary, expected_install_name, scheme, "tweak")
+    check_binary(prefs_binary, None, scheme, "preferences")
+    print("PASS metadata, exact payload whitelist, PreferenceLoader registration, SpringBoard-only filter")
+    print("SHA-256", hashlib.sha256(archive).hexdigest())
+
+
+def check_binary(binary, expected_install_name, scheme, label):
     assert struct.unpack_from(">II", binary) == (0xCAFEBABE, 2)
     architectures = set()
     for index in range(2):
@@ -108,12 +129,10 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
                 verified_sha256 += slot_count
         assert verified_sha256 > 0, "Missing SHA-256 CodeDirectory"
         architecture = "arm64e" if subtype & 0xFFFFFF == 2 else "arm64"
-        print(f"PASS {architecture}: iOS 15.0, {scheme} install name, {verified_sha256} SHA-256 signed pages")
+        print(f"PASS {label} {architecture}: iOS 15.0, {scheme} install name, {verified_sha256} SHA-256 signed pages")
         print(f"  CPU subtype: {subtype:#010x}; install name: {install_name}")
         print(f"  Dependencies: {dependencies}")
     assert architectures == {0, 2}
-    print("PASS metadata, payload, SpringBoard filter, system dependencies, no install scripts")
-    print("SHA-256", hashlib.sha256(archive).hexdigest())
 
 
 if __name__ == "__main__":

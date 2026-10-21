@@ -1,10 +1,46 @@
-# 灵屿通知
+# 灵屿通知 0.1.5
 
-> **0.1.1、0.1.2、0.1.3 均已收到注销卡死反馈，停止推荐安装。** 不要继续安装这些历史版本。
-> 已安装的设备应先在禁用插件注入或安全模式下卸载本包，再恢复正常注入。
-> 现有构建和签名检查未覆盖 SpringBoard 启动、通知列表交互及注销后的稳定性。
+按应用分类的通知选择器，保留原生通知、回复、展开、滑动清除；不复制通知卡片、不生成 AI 摘要、不联网发送通知内容。
 
-面向 iOS 15–17 的锁屏通知整理插件。当前源码为 **0.1.4 候选版**，尚未验证真实注销启动；以应用分组和数量展示为主，不生成 AI 文本摘要。
+## 当前验证边界
+
+用户反馈 0.1.4 安装和注销不再卡住，但完全无效果；这不证明未注入或任何单一根因。0.1.1–0.1.3 有卡死反馈，不推荐安装。0.1.5 是待真机验收版本，编译和软件包签名检查不等同于实际 SpringBoard 运行通过。本轮不在设备安装或注销。
+
+设备新信息：iOS 17，Relaxin，具体小版本未知。已核查 [Relaxin 官方源码](https://github.com/owngoal-dev/Relaxin) 快照 `f44e0acfef4453989381736e0c86b9c14e7ea045`：README 标明 iOS/iPadOS 16.5.1–17.3.1、RootHide；`DevKit/Helpers/update-sileo.sh` 使用 `iphoneos-arm64e`；系统注入源码有 `.safe_mode` 和 `DISABLE_TWEAKS` 检查。因此 Relaxin 对应本项目**原生 RootHide 包**，不是仅因 iOS 17 就改装 Rootless 包。官方源码支持全局插件注入，但不能据此确认用户设备已开启。PreferenceLoader 的实际已安装版本未知；包显式依赖 `preferenceloader`，由包管理器解析，若无法解析请勿强制忽略依赖。
+
+## 0.1.5 改动
+
+* 设置 → **灵屿通知**：启用、按应用分组/筛选、显示数量，使用同一 mobile/current-user/any-host CFPreferences 域；Darwin 通知实时更新。
+* 系统设置显示版本、实际系统版本、PID、更新时间、初始化次数、钩子注册、控制器触达、是否可枚举、分区数、应用数、通知数、筛选能力、面板路径与失败原因；超过五分钟提示历史记录。无诊断记录只显示未收到，绝不冒充运行中。
+* 初始化不再要求所有私有类和可选回调在最初一次检查全部存在；有限延迟 1/3/8/20/125 秒重试，之后停止；设置可手动重试。新版本启动保护有两分钟时效，登记完钩子即清理，不再等待 30 秒。保护目录改为已存在的 Preferences，避免依赖 Logs 目录；旧版标记不影响新版。保护不可写时仍安全停用并报告。
+* 同时覆盖加载、出现和可见布局路径，已有控制器可补建状态；布局回调仅调度异步刷新，不同步插入 UI。退出界面后异步恢复筛选，无 dealloc 钩子或销毁时 UI 修改。
+* 私有 supplementary 能力独立检查，不兼容时尝试公开 UIKit 子控制器和 safe-area 面板；不替换系统通知单元。回退路径是否影响某个系统列表的布局仍须真机验收。
+* 应用筛选独立检查 ABI；不可用仍可显示分类数量，但应用按钮禁用并显示原因。关键提醒保持可见，筛选只调用原生接口；保留原有有界重入协调。
+* 已精确核查 Logos internal 的 `register_hook`：继承方法会保存父类 IMP 并在目标子类 `class_addMethod`，不是直接修改父类；没有证据说明它在本项目中错误。本版没有据此杜撰根因。
+* `IslandDigest.dylib` 仅注入 `com.apple.springboard`。设置入口由 PreferenceLoader 加载独立 Preferences bundle，不向 `com.apple.Preferences` 注入通知钩子。
+* 两种构建均包含 arm64/arm64e，沿用 iPhoneOS16.5 SDK、iOS15 最低目标、classic linker、禁用 chained fixups。严格包检查同时校验 tweak 和 Preferences 可执行文件的双架构、SHA-256 CodeDirectory 每页签名、部署版本、系统依赖、路径和资源白名单。
+
+## 安装后验收（用户自行执行）
+
+1. Relaxin 确认插件注入开启且非安全模式；在包管理器正常安装 0.1.5 RootHide 包及 PreferenceLoader，不要强制忽略依赖。按包管理器流程自行重启桌面；开发过程未替你执行。
+2. 重新打开系统设置 → 灵屿通知，查看状态。`hooks-installed` 仅说明钩子注册，`owner-observed` 说明控制器已触达，`panel-visible` 才说明面板插入调用成功，仍需肉眼验证。
+3. 保留至少两个应用的原生通知，打开通知中心，检查“按应用分组”面板和应用数量；点应用仅筛选对应应用，点“全部”恢复。测试原生回复、展开、清除和关键提醒。
+4. 切换三个开关，确认不注销也生效；退出通知中心确认原始通知恢复。
+5. 若无效果，先“重试初始化 / 恢复分组”，重新打开通知中心，再“刷新运行状态”；提供页面完整截图、iOS 17 具体小版本及 Relaxin 版本。没有 SpringBoard 诊断时先排查注入/安全模式/日志读取，不将其硬说成 ABI 错误。
+
+## 检查命令
+
+```sh
+python3 tests/check_source.py
+python3 tests/check_package.py packages/<roothide>.deb 0.1.5 roothide
+python3 tests/check_package.py packages/<rootless>.deb 0.1.5 rootless
+```
+
+`tests/run.sh` / artifact harness 为历史独立 iOS 进程回归，不是本版已运行测试，不是设备验收。
+
+---
+
+# 历史开发记录（以下版本和测试不代表 0.1.5 验证结果）
 
 ## 0.1.4 候选：筛选恢复重入修正
 

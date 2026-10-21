@@ -7,6 +7,26 @@
 #include <time.h>
 #include <fcntl.h>
 #include <errno.h>
+#import "IDShared.h"
+#include <sys/stat.h>
+static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
+static NSMutableDictionary *IDDiagnostics;
+static void IDStatus(NSString *stage, NSString *reason) {
+    if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
+    IDDiagnostics[@"version"] = @"0.1.5";
+    IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
+    IDDiagnostics[@"pid"] = @(getpid());
+    IDDiagnostics[@"updated"] = NSDate.date;
+    IDDiagnostics[@"stage"] = stage;
+    IDDiagnostics[@"reason"] = reason ?: @"";
+    [IDDiagnostics writeToFile:IDStatusPath atomically:YES];
+}
+static void IDLoadOptions(void) {
+    IDReloadPreferences();
+    IDEnabled = IDPref(@"Enabled", YES);
+    IDGrouping = IDPref(@"Grouping", YES);
+    IDShowCounts = IDPref(@"ShowCounts", YES);
+}
 
 @interface NCNotificationStructuredListViewController : UIViewController
 @end
@@ -60,7 +80,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Logs/IslandDigest-0.1.4.startup-pending";
+    return "/var/mobile/Library/Preferences/IslandDigest-0.1.5.startup-pending";
 #endif
 }
 
@@ -93,6 +113,7 @@ static id IDRead(id object, const char *name) {
 }
 
 static NSArray *IDItems(id object) {
+    if ([object isKindOfClass:[NSDictionary class]]) return [object allValues];
     if ([object isKindOfClass:[NSArray class]]) return object;
     if ([object isKindOfClass:[NSSet class]]) return [object allObjects];
     if ([object isKindOfClass:[NSOrderedSet class]]) return [object array];
@@ -145,6 +166,8 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, copy) NSString *selected;
 @property(nonatomic, copy) NSString *renderedSelection;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
+@property(nonatomic) BOOL overlay;
+@property(nonatomic) UIEdgeInsets savedInsets;
 @property(nonatomic) BOOL inserted;
 @property(nonatomic) BOOL updating;
 @property(nonatomic) BOOL applyingFilter;
@@ -166,6 +189,19 @@ static BOOL IDFilteringReady;
 
 static IDCoordinator *IDState(id owner) {
     return objc_getAssociatedObject(owner, &IDCoordinatorKey);
+}
+
+static IDCoordinator *IDEnsureState(UIViewController *owner) {
+    IDCoordinator *state = IDState(owner);
+    if (!state) {
+        state = [IDCoordinator new];
+        state.owner = owner;
+        objc_setAssociatedObject(owner, &IDCoordinatorKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [IDOwners addObject:owner];
+        IDDiagnostics[@"ownerSeen"] = @YES;
+        IDStatus(@"owner-observed", @"通知控制器钩子已触达；等待可见界面");
+    }
+    return state;
 }
 
 static void IDScheduleRefresh(void) {
@@ -197,7 +233,7 @@ static void IDScheduleRefresh(void) {
     self.glass.userInteractionEnabled = NO;
     [self addSubview:self.glass];
     self.heading = [UILabel new];
-    self.heading.text = IDText("通知归纳");
+    self.heading.text = IDText("按应用分组");
     self.heading.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
     self.heading.textColor = UIColor.labelColor;
     self.heading.adjustsFontForContentSizeCategory = YES;
@@ -252,8 +288,8 @@ static void IDScheduleRefresh(void) {
     }
     NSUInteger total = 0;
     for (IDGroup *group in groups) total += group.count;
-    self.detail.text = [NSString stringWithFormat:IDText("%lu 个应用 · %lu 条"),
-        (unsigned long)groups.count, (unsigned long)total];
+    self.detail.text = IDShowCounts ? [NSString stringWithFormat:IDText("%lu 个应用 · %lu 条"),
+        (unsigned long)groups.count, (unsigned long)total] : IDText("保留原生通知操作");
     NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];
     [entries addObjectsFromArray:groups];
     for (id entry in entries) {
@@ -294,7 +330,9 @@ static void IDScheduleRefresh(void) {
         badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold];
         badge.textColor = foreground;
         badge.alpha = 0.75;
+        badge.hidden = !IDShowCounts;
         [content addArrangedSubview:badge];
+        button.enabled = !group || (IDFilteringReady && IDGrouping);
         [NSLayoutConstraint activateConstraints:@[
             [content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:11],
             [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-11],
@@ -331,6 +369,19 @@ static void IDScheduleRefresh(void) {
 }
 @end
 
+static BOOL IDSupplementaryReady(id owner) {
+    Class target = object_getClass(owner);
+    Class configuration = objc_getClass("NCNotificationListSupplementaryViewConfiguration");
+    const char *init = "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:";
+    if (!IDMethod(target, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", "@", 5)
+        || !IDArgument(target, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", 2, "Q")
+        || !IDArgument(target, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", 3, "@")
+        || !IDArgument(target, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", 4, "@")
+        || !IDMethod(configuration, init, "@", 13)) return NO;
+    for (unsigned int index = 2; index <= 9; index++) if (!IDArgument(configuration, init, index, "@")) return NO;
+    return IDArgument(configuration, init, 10, "q") && IDArgument(configuration, init, 11, "B") && IDArgument(configuration, init, 12, "B");
+}
+
 @implementation IDCoordinator
 
 - (instancetype)init {
@@ -341,8 +392,15 @@ static void IDScheduleRefresh(void) {
 
 - (NSArray<IDGroup *> *)snapshot {
     id master = IDRead(self.owner, "masterList");
-    NSArray *sections = IDItems(IDRead(master, "_notificationSectionListsForEnumeration"));
+    if (!master) master = IDRead(self.owner, "notificationMasterList");
+    id sectionObjects = IDRead(master, "_notificationSectionListsForEnumeration");
+    if (!sectionObjects) sectionObjects = IDRead(master, "sectionLists");
+    NSArray *sections = IDItems(sectionObjects);
     NSMutableSet *requests = [NSMutableSet new];
+    IDCollectRequests(IDRead(master, "allNotificationRequests"), requests, 0);
+    IDDiagnostics[@"masterSeen"] = @(master != nil);
+    IDDiagnostics[@"sections"] = @(sections.count);
+    IDDiagnostics[@"enumerationSupported"] = @(sectionObjects != nil || IDMethod(object_getClass(master), "allNotificationRequests", "@", 2));
     for (id section in sections) {
         IDCollectRequests(IDRead(section, "allNotificationRequests"), requests, 0);
         IDCollectRequests(IDRead(section, "filteredNotificationRequests"), requests, 0);
@@ -356,7 +414,9 @@ static void IDScheduleRefresh(void) {
             group = [IDGroup new];
             group.identifier = identifier;
             SEL settingsSelector = sel_registerName("_sectionSettingsForSectionIdentifier:");
-            id settings = ((id (*)(id, SEL, id))objc_msgSend)(self.owner, settingsSelector, identifier);
+            id settings = IDMethod(object_getClass(self.owner), "_sectionSettingsForSectionIdentifier:", "@", 3)
+                && IDArgument(object_getClass(self.owner), "_sectionSettingsForSectionIdentifier:", 2, "@")
+                ? ((id (*)(id, SEL, id))objc_msgSend)(self.owner, settingsSelector, identifier) : nil;
             NSString *name = IDRead(settings, "displayName");
             group.name = [name isKindOfClass:NSString.class] && name.length ? name : identifier;
             id icon = IDRead(settings, "settingsIcon");
@@ -447,6 +507,14 @@ static void IDScheduleRefresh(void) {
     self.recoveryAttempts += 1;
     self.selected = nil;
     if (![self applyFilter]) IDLog("filter restoration pending");
+    if (self.inserted && self.overlay) {
+        [self.panel willMoveToParentViewController:nil];
+        [self.panel.view removeFromSuperview];
+        [self.panel removeFromParentViewController];
+        self.owner.additionalSafeAreaInsets = self.savedInsets;
+        self.inserted = NO;
+        self.overlay = NO;
+    }
     if (self.inserted) {
         @try {
             ((void (*)(id, SEL, id))objc_msgSend)(self.container,
@@ -467,6 +535,7 @@ static void IDScheduleRefresh(void) {
         self.panel.view.accessibilityElementsHidden = YES;
     }
     [self recover];
+    IDStatus(@"interface-failed", @"面板或筛选操作失败；已停止新增修改，可在设置重试");
     IDLog("disabled after interface failure");
 }
 
@@ -492,6 +561,12 @@ static void IDScheduleRefresh(void) {
 
 - (void)refresh {
     if (!self.active || self.updating || !self.owner.isViewLoaded) return;
+    if (!IDEnabled || !IDGrouping) {
+        self.selected = nil;
+        [self recover];
+        IDStatus(@"disabled-by-preference", @"已按设置关闭分组；原生通知不变");
+        return;
+    }
     if (self.disabled) {
         [self recover];
         return;
@@ -511,17 +586,50 @@ static void IDScheduleRefresh(void) {
             }
         }
         self.groups = groups;
+        self.recoveryAttempts = 0;
+        IDDiagnostics[@"apps"] = @(groups.count);
+        NSUInteger requestCount = 0;
+        for (IDGroup *group in groups) requestCount += group.count;
+        IDDiagnostics[@"requests"] = @(requestCount);
+        IDDiagnostics[@"filterAvailable"] = @(IDFilteringReady);
         if (!selectionExists) self.selected = nil;
         if (![self applyFilter]) {
             [self disable];
             return;
         }
         if (groups.count == 0) {
-            if (self.inserted) {
-                ((void (*)(id, SEL, id))objc_msgSend)(self.container,
-                    sel_registerName("removeSupplementaryViewController:"), self.panel);
-                self.inserted = NO;
-            }
+            if (self.inserted) [self recover];
+            BOOL supported = [IDDiagnostics[@"enumerationSupported"] boolValue];
+            IDStatus(supported ? @"waiting-notifications" : @"enumeration-unavailable",
+                supported ? @"控制器已出现；目前未读到通知" : @"控制器已出现，但当前系统的通知枚举接口不可用");
+            return;
+        }
+        if (!self.container && !self.inserted && !IDSupplementaryReady(self.owner)) {
+            // Public UIKit fallback: no notification cells, requests or delegates replaced.
+            self.panel = [IDDigestController new];
+            self.panel.coordinator = self;
+            self.savedInsets = self.owner.additionalSafeAreaInsets;
+            UIEdgeInsets insets = self.savedInsets;
+            insets.top += 112;
+            self.owner.additionalSafeAreaInsets = insets;
+            [self.owner addChildViewController:self.panel];
+            UIView *view = self.panel.view;
+            view.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.owner.view addSubview:view];
+            [NSLayoutConstraint activateConstraints:@[
+                [view.topAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.topAnchor constant:-112],
+                [view.leadingAnchor constraintEqualToAnchor:self.owner.view.leadingAnchor constant:8],
+                [view.trailingAnchor constraintEqualToAnchor:self.owner.view.trailingAnchor constant:-8],
+                [view.heightAnchor constraintEqualToConstant:112]
+            ]];
+            [self.panel didMoveToParentViewController:self.owner];
+            self.overlay = YES;
+            self.inserted = YES;
+        }
+        if (self.overlay) {
+            [self render];
+            IDDiagnostics[@"presentation"] = @"UIKit-safe-area";
+            IDStatus(@"panel-visible", IDFilteringReady ? @"应用分组面板已加入可见控制器" : @"分组面板可见；原生筛选接口不兼容，应用按钮停用");
             return;
         }
         if (!self.container) {
@@ -542,7 +650,12 @@ static void IDScheduleRefresh(void) {
                 sel_registerName("insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:"),
                 0, IDText("com.local.islanddigest.panel"), IDText("IslandDigest"));
         }
-        if (!self.configuration || !self.container) {
+        if (!self.configuration || !self.container
+            || !IDMethod(object_getClass(self.container), "insertSupplementaryViewController:withConfiguration:", "v", 4)
+            || !IDArgument(object_getClass(self.container), "insertSupplementaryViewController:withConfiguration:", 2, "@")
+            || !IDArgument(object_getClass(self.container), "insertSupplementaryViewController:withConfiguration:", 3, "@")
+            || !IDMethod(object_getClass(self.container), "removeSupplementaryViewController:", "v", 3)
+            || !IDArgument(object_getClass(self.container), "removeSupplementaryViewController:", 2, "@")) {
             [self disable];
             return;
         }
@@ -553,6 +666,8 @@ static void IDScheduleRefresh(void) {
             ((void (*)(id, SEL, id, id))objc_msgSend)(self.container,
                 sel_registerName("insertSupplementaryViewController:withConfiguration:"), self.panel, self.configuration);
             IDLog("panel inserted");
+            IDDiagnostics[@"presentation"] = @"native-supplementary";
+            IDStatus(@"panel-visible", IDFilteringReady ? @"原生通知分组面板已插入" : @"面板已插入；筛选接口不可用，应用按钮停用");
             self.renderedSelection = self.selected;
         } else if (!unchanged || !selectionExists
             || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) {
@@ -572,28 +687,36 @@ static void IDScheduleRefresh(void) {
 %hook NCNotificationStructuredListViewController
 - (void)viewDidLoad {
     %orig;
-    IDCoordinator *state = [IDCoordinator new];
-    state.owner = self;
-    objc_setAssociatedObject(self, &IDCoordinatorKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [IDOwners addObject:self];
+    IDEnsureState(self);
     IDLog("owner loaded; panel deferred");
 }
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    IDCoordinator *state = IDState(self);
+    IDCoordinator *state = IDEnsureState(self);
     state.active = YES;
     IDLog("owner appeared");
     IDScheduleRefresh();
 }
+- (void)viewDidLayoutSubviews {
+    %orig;
+    IDCoordinator *state = IDEnsureState(self);
+    if (self.view.window && !state.active) {
+        state.active = YES;
+        IDDiagnostics[@"visibleOwnerSeen"] = @YES;
+        IDScheduleRefresh(); // Never insert UI synchronously from a layout callback.
+    }
+}
 - (void)viewWillDisappear:(BOOL)animated {
     IDCoordinator *state = IDState(self);
     state.active = NO;
-    @try {
-        [state resetFilter];
-    } @catch (NSException *exception) {
-        [state disable];
-    }
     %orig;
+    __weak IDCoordinator *weakState = state;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDCoordinator *current = weakState;
+        if (!current || current.active) return;
+        @try { [current resetFilter]; }
+        @catch (NSException *exception) { [current disable]; }
+    });
 }
 - (void)insertNotificationRequest:(id)request {
     %orig;
@@ -636,70 +759,87 @@ static void IDScheduleRefresh(void) {
 %end
 
 static BOOL IDHooksInstalled;
-
+static NSUInteger IDInstallAttempts;
 static void IDInstallHooks(void) {
-        if (IDHooksInstalled) return;
-        const char *marker = IDStartupMarkerPath();
-        int startupStatus = IDAcquireStartupMarker(marker);
-        if (startupStatus != 0) {
-            IDLog(startupStatus == 1 ? "previous startup incomplete; hooks skipped" :
-                "startup marker unavailable; hooks skipped");
-            return;
-        }
-        IDLog("checking notification ABI");
-        Class owner = objc_getClass("NCNotificationStructuredListViewController");
-        Class master = objc_getClass("NCNotificationMasterList");
-        Class section = objc_getClass("NCNotificationStructuredSectionList");
-        Class container = objc_getClass("NCNotificationListSupplementaryViewsSection");
-        Class configuration = objc_getClass("NCNotificationListSupplementaryViewConfiguration");
-        BOOL ready = IDMethod(owner, "masterList", "@", 2)
-            && IDMethod(master, "_notificationSectionListsForEnumeration", "@", 2)
-            && IDMethod(section, "allNotificationRequests", "@", 2)
-            && IDMethod(section, "filteredNotificationRequests", "@", 2)
-            && IDMethod(owner, "_sectionSettingsForSectionIdentifier:", "@", 3)
-            && IDMethod(owner, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", "@", 5)
-            && IDMethod(container, "insertSupplementaryViewController:withConfiguration:", "v", 4)
-            && IDMethod(container, "removeSupplementaryViewController:", "v", 3)
-            && IDMethod(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", "@", 13)
-            && IDMethod(owner, "insertNotificationRequest:", "v", 3)
-            && IDMethod(owner, "modifyNotificationRequest:", "v", 3)
-            && IDMethod(owner, "removeNotificationRequest:", "v", 3)
-            && IDMethod(owner, "notificationListComponent:didRemoveNotificationRequest:", "v", 4)
-            && IDMethod(owner, "notificationListBaseComponentDidRemoveAll:", "v", 3);
-        if (!ready) {
-            NSLog(IDText("%@"), IDText("[IslandDigest] unsupported notification interfaces; disabled"));
-            unlink(marker);
-            return;
-        }
-        IDFilteringReady = IDMethod(owner, "notificationMasterList:shouldFilterNotificationRequest:", "B", 4)
-            && IDMethod(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", "v", 4)
-            && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 2, "@")
-            && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 3, "B")
-            && IDArgument(owner, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", 2, "Q")
-            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 10, "q")
-            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 11, "B")
-            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 12, "B");
-        if (!IDFilteringReady) {
-            unlink(marker);
-            return;
-        }
-        IDOwners = [NSHashTable weakObjectsHashTable];
-        IDLog("installing filter hook");
+    if (IDHooksInstalled) return;
+    IDInstallAttempts++;
+    IDDiagnostics[@"initAttempts"] = @(IDInstallAttempts);
+    Class owner = objc_getClass("NCNotificationStructuredListViewController");
+    if (!owner) {
+        IDStatus(@"waiting-classes", @"通知框架尚未加载；有限重试后仍可从设置手动重试");
+        return;
+    }
+    const char *marker = IDStartupMarkerPath();
+    struct stat info;
+    if (stat(marker, &info) == 0 && time(NULL) - info.st_mtime < 120) {
+        IDStatus(@"startup-guard", @"检测到两分钟内未完成的启动；等待保护期或在设置手动重试");
+        return;
+    }
+    unlink(marker); // Only this version's expired guard; older versions' markers are ignored.
+    int markerResult = IDAcquireStartupMarker(marker);
+    if (markerResult != 0) {
+        IDStatus(@"guard-unavailable", @"启动保护文件不可写；为安全不安装钩子，可在设置重试");
+        return;
+    }
+    IDFilteringReady = IDMethod(owner, "notificationMasterList:shouldFilterNotificationRequest:", "B", 4)
+        && IDArgument(owner, "notificationMasterList:shouldFilterNotificationRequest:", 2, "@")
+        && IDArgument(owner, "notificationMasterList:shouldFilterNotificationRequest:", 3, "@")
+        && IDMethod(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", "v", 4)
+        && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 2, "@")
+        && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 3, "B");
+    IDOwners = [NSHashTable weakObjectsHashTable];
+    if (IDFilteringReady) {
         %init(IDFilter);
-        IDLog("installing lifecycle hooks");
-        %init(IDMain);
-        IDHooksInstalled = YES;
-        NSLog(IDText("%@"), IDText("[IslandDigest] notification digest ready"));
-        IDLog("hooks ready; awaiting visible notification interface");
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            if (unlink(IDStartupMarkerPath()) == 0) {
-                IDLog("startup main queue reached thirty-second checkpoint");
-            }
-        });
+    }
+    %init(IDMain);
+    IDHooksInstalled = YES;
+    IDDiagnostics[@"hooksInstalled"] = @YES;
+    IDDiagnostics[@"filterAvailable"] = @(IDFilteringReady);
+    IDStatus(@"hooks-installed", @"钩子已注册，尚未确认通知控制器触达；请打开通知中心");
+    // Hook registration is synchronous; no permanent 30-second startup marker.
+    unlink(marker);
 }
 
+static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                                const void *object, CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDLoadOptions();
+        BOOL retry = CFEqual(name, CFSTR("com.local.islanddigest/retry"));
+        if (retry && !IDHooksInstalled) {
+            unlink(IDStartupMarkerPath()); // Explicit user recovery, not an automatic guard bypass.
+            IDInstallHooks();
+        }
+        for (UIViewController *owner in IDOwners.allObjects) {
+            IDCoordinator *state = IDState(owner);
+            if (retry) {
+                [state recover];
+                if (state.inserted || state.filtered.count) continue;
+                state.disabled = NO;
+                state.recoveryAttempts = 0;
+                state.panel = nil;
+                state.container = nil;
+                state.configuration = nil;
+            }
+            if (!IDEnabled || !IDGrouping) { state.recoveryAttempts = 0; [state resetFilter]; [state recover]; }
+            else if (state.active && !state.disabled) [state render];
+        }
+        if (!IDEnabled || !IDGrouping) IDStatus(@"disabled-by-preference", @"已按设置关闭分组");
+        IDScheduleRefresh();
+    });
+}
 %ctor {
-    IDLog("image constructor entered");
-    dispatch_async(dispatch_get_main_queue(), ^{ IDInstallHooks(); });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDLoadOptions();
+        IDStatus(@"constructor-reached", @"SpringBoard 已加载本插件；尚未安装控制器钩子");
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, IDPreferenceChanged,
+            CFSTR("com.local.islanddigest/changed"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, IDPreferenceChanged,
+            CFSTR("com.local.islanddigest/retry"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        IDInstallHooks();
+        for (NSNumber *delay in @[@1, @3, @8, @20, @125]) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay.longLongValue * NSEC_PER_SEC),
+                           dispatch_get_main_queue(), ^{ IDInstallHooks(); });
+        }
+    });
 }
 #endif

@@ -37,6 +37,9 @@ jobs:
           git -C /tmp/theos-sdks rev-parse HEAD
           xcodebuild -version
 
+      - name: Check source contracts
+        run: python3 tests/check_source.py
+
       - name: Build package
         run: make package FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
 
@@ -48,7 +51,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.1.4', '${{ matrix.scheme }}'], check=True)
+                          '0.1.5', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
