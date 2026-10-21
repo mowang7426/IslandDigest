@@ -13,3 +13,32 @@ static BOOL IDPref(NSString *key, BOOL fallback) {
 static void IDReloadPreferences(void) {
     CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 }
+
+// Experience preferences are local only. Never copy these identifiers into diagnostics.
+static id IDPreferenceValue(NSString *key) {
+    CFPropertyListRef value = CFPreferencesCopyValue((__bridge CFStringRef)key, IDPrefsDomain,
+        kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    return CFBridgingRelease(value);
+}
+static void IDWritePreference(NSString *key, id value) {
+    CFPreferencesSetValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value,
+        IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+}
+static NSArray<NSString *> *IDPinnedIdentifiers(void) {
+    id value = IDPreferenceValue(@"PinnedApps");
+    NSMutableArray *result = [NSMutableArray new];
+    if ([value isKindOfClass:NSArray.class]) for (id item in value) {
+        if ([item isKindOfClass:NSString.class] && [item length] && ![result containsObject:item]) [result addObject:item];
+        if (result.count >= 128) break;
+    }
+    return result;
+}
+static NSString *IDStringOption(NSString *key, NSArray<NSString *> *allowed, NSString *fallback) {
+    id value = IDPreferenceValue(key);
+    return [value isKindOfClass:NSString.class] && [allowed containsObject:value] ? value : fallback;
+}
+static inline void IDNotifyPreferencesChanged(void) {
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR("com.local.islanddigest/changed"), NULL, NULL, YES);
+}

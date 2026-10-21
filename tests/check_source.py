@@ -8,8 +8,8 @@ prefs = (root / 'prefs/IDPrefs.m').read_text()
 for key in ('Enabled', 'Grouping', 'ShowCounts'):
     assert f'@"{key}"' in tweak and f'@"{key}"' in prefs
 assert 'kCFPreferencesCurrentUser, kCFPreferencesAnyHost' in shared
-assert 'kCFPreferencesCurrentUser, kCFPreferencesAnyHost' in prefs
-assert 'com.local.islanddigest/changed' in tweak and 'com.local.islanddigest/changed' in prefs
+assert 'IDWritePreference' in prefs and 'IDNotifyPreferencesChanged' in prefs
+assert 'com.local.islanddigest/changed' in tweak and 'com.local.islanddigest/changed' in shared
 assert 'com.local.islanddigest/retry' in tweak and 'com.local.islanddigest/retry' in prefs
 assert 'viewDidLayoutSubviews' in tweak and 'IDEnsureState(self)' in tweak
 assert 'allNotificationRequests' in tweak and 'filteredNotificationRequests' in tweak
@@ -21,7 +21,22 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.1.5'
+assert info['CFBundleVersion'] == '0.1.6'
 assert 'preferenceloader' in (root/'control').read_text()
 assert plistlib.loads((root/'IslandDigest.plist').read_bytes())['Filter']['Bundles'] == ['com.apple.springboard']
-print('PASS 0.1.5 portable source/config contracts (not runtime validation)')
+print('PASS 0.1.6 portable source/config contracts (not runtime validation)')
+
+ui = (root / 'IDDigestUI.inc').read_text()
+for key in ('PinnedApps', 'SortMode', 'LayoutMode', 'RememberFilter'):
+    assert f'@"{key}"' in prefs or f'@"{key}"' in shared
+assert 'IDExperienceOrder' in tweak and 'IDExperienceVisibleRows' in ui
+assert 'desiredSelection' in tweak and 'openingPending' in tweak and 'dismissed' in tweak
+assert '[state endAppearance]' in tweak and '[state beginAppearance]' in tweak
+assert 'hold.cancelsTouchesInView = YES' in ui
+assert 'cancelTrackingWithEvent:nil' in ui and 'accessibilityCustomActions' in ui
+assert 'geometryUpdating' in tweak and 'CGSizeEqualToSize' in tweak
+assert 'self.owner.additionalSafeAreaInsets = self.savedInsets' in tweak
+assert 'self.renderedRevision != IDOptionsRevision' in tweak
+assert 'previous.latest' in tweak and 'previous.hasCriticalAlert' in tweak
+assert 'IDPinnedAppsController.class' in prefs
+print('PASS experience source contracts (not runtime validation)')
