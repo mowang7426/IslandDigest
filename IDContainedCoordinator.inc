@@ -56,11 +56,15 @@
         : shouldHide ? @"已隐藏原生列表；未删除任何通知"
         : @"面板不可见或无卡片；保留原生列表";
     IDDiagnostics[@"nativeHideReason"] = self.nativeHideReason;
-    IDDiagnostics[@"previewPolicyReason"] = @"effective-per-request-policy-unverified; fail-closed";
+    IDDiagnostics[@"previewPolicyReason"] = IDPreviewWhenUnlocked
+        ? @"contentPreviewSetting-unmapped; explicit-default-off-unlocked-opt-in; per-app Never cannot be verified"
+        : @"user-disabled; fail-closed";
     IDDiagnostics[@"cardsRendered"] = @(IDContainedMode ? digest.builtCardCount : 0);
-    IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? digest.builtCardCount : 0);
+    NSUInteger redacted = 0;
+    for (NSDictionary *card in self.cards) if ([card[@"redacted"] boolValue]) redacted++;
+    IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? redacted : 0);
     IDDiagnostics[@"cardsLayoutReady"] = @(cardsReady);
-    if (IDContainedMode) digest.cardNotice.text = [NSString stringWithFormat:@"元数据占位 · 正文预览未实现\n%@", self.nativeHideReason];
+    if (IDContainedMode) digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
 }
 - (void)dropContainedContent {
     self.cards = @[];

@@ -7,7 +7,11 @@ ui = (root/'IDContainedUI.inc').read_text()
 assert 'IDContainedMode = YES, IDHideNative = NO' in main
 assert 'IDPref(@"ContainedMode", YES)' in main
 assert 'IDPref(@"HideNativeList", NO) && IDContainedMode' in main
-assert 'IDContainedPrivacyGate(NSThread.isMainThread, 0, 0, 0, 0, 0, 0)' in support
+assert 'IDPreviewWhenUnlocked = NO' in main
+assert 'IDPref(@"AllowPreviewWhenUnlocked", NO)' in main
+assert 'application.protectedDataAvailable' in support
+assert 'IDRead(request, "options")' in support
+assert 'contentPreviewSetting remains intentionally uninterpreted' in support
 assert 'id content = allowed ? IDRead(request, "content") : nil' in support
 for field in ('title', 'subtitle', 'message'):
     assert f'allowed ? IDContainedText(IDRead(content, "{field}"))' in support

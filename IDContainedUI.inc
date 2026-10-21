@@ -76,7 +76,10 @@
         [self.cardStack addArrangedSubview:[self cardLabel:empty style:UIFontTextStyleBody color:UIColor.secondaryLabelColor]];
     }
     if (state.cards.count >= IDContainedLimit) [self.cardStack addArrangedSubview:[self cardLabel:@"仅展示当前范围最近 160 条；较早通知仍在原生列表。" style:UIFontTextStyleFootnote color:UIColor.secondaryLabelColor]];
-    self.cardNotice.text = [NSString stringWithFormat:@"仅预览 · 未验证逐条预览策略，内容已隐藏\n%@", state.nativeHideReason ?: @"原生列表保留"];
+    NSUInteger redacted = 0;
+    for (NSDictionary *card in state.cards) if ([card[@"redacted"] boolValue]) redacted++;
+    NSString *policyNote = redacted ? @"系统策略未确认或设备未满足条件，部分内容已隐藏" : @"仅在解锁且受保护数据可用时预览；无法核验每 App 的 Never 映射";
+    self.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", policyNote, state.nativeHideReason ?: @"原生列表保留"];
     self.builtCardCount = rendered;
     [self.cardStack setNeedsLayout];
     [self.cardStack layoutIfNeeded];

@@ -3,14 +3,29 @@ static BOOL IDCollection(id value) {
     return [value isKindOfClass:NSArray.class] || [value isKindOfClass:NSSet.class]
         || [value isKindOfClass:NSOrderedSet.class] || [value isKindOfClass:NSDictionary.class];
 }
-/* The iOS 17 headers expose contentPreviewSetting (unsigned long long), but do
- * not establish its enum mapping/effective per-request policy. Authentication
- * alone is NOT permission. Until a verified effective-policy adapter exists,
- * never fetch title, subtitle, message, nor hiddenPreviewsBodyPlaceholder.
- * A native content-view visibility flag is also not a privacy permission. */
-static BOOL IDContainedPreviewAllowed(id request) {
-    (void)request;
-    return IDContainedPrivacyGate(NSThread.isMainThread, 0, 0, 0, 0, 0, 0);
+/*
+ * Preview policy is deliberately fail-closed for the system enum: iOS 17's
+ * contentPreviewSetting is an opaque unsigned value in the available headers,
+ * and no authoritative per-request mapping is exposed here. We therefore do
+ * not guess enum values or use a native visibility flag as permission.
+ *
+ * The explicit, default-off user preference is an opt-in authorization for
+ * this plugin only. Because the system enum is unmapped, this opt-in may not
+ * preserve an individual app's Never setting; Settings warns about that limit.
+ * Content is read only on the main thread while SpringBoard's protected data is available and the owner
+ * controller is visible (the authenticated/unlocked state). No body is read
+ * while locked or when protected data is unavailable.
+ */
+static BOOL IDContainedPreviewAllowed(id request, UIViewController *owner) {
+    if (!IDPreviewWhenUnlocked || !NSThread.isMainThread) return NO;
+    UIApplication *application = UIApplication.sharedApplication;
+    if (!application.protectedDataAvailable || application.applicationState == UIApplicationStateBackground) return NO;
+    if (!owner || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return NO;
+    id content = IDRead(request, "content");
+    id options = IDRead(request, "options");
+    if (!content || !options) return NO;
+    /* contentPreviewSetting remains intentionally uninterpreted. */
+    return YES;
 }
 static void IDContainedClearView(UIView *view) {
     view.accessibilityLabel = nil; view.accessibilityValue = nil; view.accessibilityHint = nil;
@@ -21,7 +36,7 @@ static NSString *IDContainedText(id value) {
     if (![value isKindOfClass:NSString.class]) return @"";
     return [value substringToIndex:MIN((NSUInteger)2048, [value length])];
 }
-static NSArray *IDContainedSnapshot(NSSet *requests, NSString *selected) {
+static NSArray *IDContainedSnapshot(NSSet *requests, NSString *selected, UIViewController *owner) {
     NSMutableArray *matching = [NSMutableArray new];
     for (id request in requests) {
         NSString *app = IDRead(request, "sectionIdentifier");
@@ -48,7 +63,7 @@ static NSArray *IDContainedSnapshot(NSSet *requests, NSString *selected) {
         if ([identities containsObject:identity]) continue;
         [identities addObject:identity];
         id date = IDRead(request, "timestamp");
-        BOOL allowed = NSThread.isMainThread && IDContainedPreviewAllowed(request);
+        BOOL allowed = NSThread.isMainThread && IDContainedPreviewAllowed(request, owner);
         id content = allowed ? IDRead(request, "content") : nil;
         [cards addObject:@{@"app":app, @"date":[date isKindOfClass:NSDate.class] ? date : NSDate.distantPast,
             @"identity":identity,
