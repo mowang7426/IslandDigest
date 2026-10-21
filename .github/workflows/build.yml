@@ -1,0 +1,35 @@
+name: Build IslandDigest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      THEOS: ${{ runner.temp }}/theos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Theos and SDKs
+        run: |
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+
+      - name: Build rootless package
+        run: make package FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=rootless
+
+      - name: Run package checks
+        run: |
+          package=$(find packages -name '*.deb' -type f | head -n 1)
+          test -n "$package"
+          python3 tests/check_package.py "$package" 0.1.4 || true
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: IslandDigest-package
+          path: packages/*.deb
+          if-no-files-found: error

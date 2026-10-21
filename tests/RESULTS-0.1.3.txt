@@ -1,0 +1,67 @@
+iOS 17.0; isolated native test processes; not a live SpringBoard respring test.
+
+arm64 — 31 assertions passed
+PASS fresh startup acquires its persistent marker
+PASS unfinished startup is detected before hook installation
+PASS startup does not insert a panel before appearance
+PASS visible populated list inserts once
+PASS snapshot deduplicates requests and sorts latest first
+PASS dictionary-backed filtered requests remain in the notification snapshot
+PASS repeated refreshes do not reinsert the panel
+PASS selection filters only the other application
+PASS second tap restores all notifications
+PASS disappearance restores temporary filters
+PASS empty notification list does not insert a panel
+PASS insertion exception disables panel without retry loop
+PASS partially applied filter exception restores notifications and disables panel
+PASS failed cleanup preserves outstanding restoration and removal records
+PASS next external event retries failed cleanup without reinserting panel
+PASS persistent cleanup failures stop after three attempts
+PASS applications containing critical alerts stay visible
+PASS real UIKit digest creates and lays out all application buttons
+PASS real supplementary configuration initialization
+PASS real supplementary section insertion
+PASS real supplementary section removal
+PASS unfinished startup skips all production hooks
+PASS production hook installation in isolated process
+PASS real notification owner view load
+PASS real notification owner appeared and refreshed; groups=0
+PASS real populated list digest insertion
+PASS real native notification filtering
+PASS real filtered snapshot remains stable
+PASS thirty real-list refreshes preserve selected filter
+PASS real notification owner disappeared
+PASS real notification removal clears digest
+
+arm64e — 31 assertions passed
+PASS fresh startup acquires its persistent marker
+PASS unfinished startup is detected before hook installation
+PASS startup does not insert a panel before appearance
+PASS visible populated list inserts once
+PASS snapshot deduplicates requests and sorts latest first
+PASS dictionary-backed filtered requests remain in the notification snapshot
+PASS repeated refreshes do not reinsert the panel
+PASS selection filters only the other application
+PASS second tap restores all notifications
+PASS disappearance restores temporary filters
+PASS empty notification list does not insert a panel
+PASS insertion exception disables panel without retry loop
+PASS partially applied filter exception restores notifications and disables panel
+PASS failed cleanup preserves outstanding restoration and removal records
+PASS next external event retries failed cleanup without reinserting panel
+PASS persistent cleanup failures stop after three attempts
+PASS applications containing critical alerts stay visible
+PASS real UIKit digest creates and lays out all application buttons
+PASS real supplementary configuration initialization
+PASS real supplementary section insertion
+PASS real supplementary section removal
+PASS unfinished startup skips all production hooks
+PASS production hook installation in isolated process
+PASS real notification owner view load
+PASS real notification owner appeared and refreshed; groups=0
+PASS real populated list digest insertion
+PASS real native notification filtering
+PASS real filtered snapshot remains stable
+PASS thirty real-list refreshes preserve selected filter
+PASS real notification owner disappeared
+PASS real notification removal clears digest

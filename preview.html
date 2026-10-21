@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵屿通知 · 交互示意</title>
+<style>
+  :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  *{box-sizing:border-box}body{margin:0;background:#10151b;color:#f5f5f7;min-height:100svh;display:grid;place-items:center;padding:28px 12px}
+  main{width:min(100%,390px)}.intro{margin:0 12px 20px}.intro small{color:#91abaf;letter-spacing:3px;font-size:10px}.intro h1{font-size:25px;letter-spacing:1px;margin:8px 0}.intro p{color:#8e9ba5;font-size:12px;line-height:1.8}
+  .phone{position:relative;overflow:hidden;isolation:isolate;min-height:760px;border-radius:46px;padding:20px 18px 36px;border:1px solid #ffffff20;background:radial-gradient(ellipse at 80% 0,#bf9f7b66,transparent 45%),radial-gradient(ellipse at 10% 50%,#47757d88,transparent 65%),linear-gradient(165deg,#263d45,#182c34 60%,#152126);box-shadow:0 35px 90px #0006}
+  .status{font-size:12px;font-weight:600;padding:0 12px;display:flex;justify-content:space-between}.lock{font-size:19px;text-align:center;margin-top:35px}.date{text-align:center;margin-top:14px;font-size:17px;font-weight:500}.clock{text-align:center;font-size:85px;font-weight:600;letter-spacing:-5px;line-height:1.25}.sub{text-align:center;color:#ffffff80;font-size:11px;margin:4px 0 44px}
+  .glass{background:#ffffffb3;color:#182326;backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);border:1px solid #ffffff30}
+  .digest{border-radius:24px;padding:14px 0 12px;margin-bottom:12px}.heading{display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px}.heading strong{font-size:16px;font-weight:600}.heading span{font-size:10px;color:#4b5b5f}.chips{display:flex;overflow:auto;gap:8px;padding:0 14px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+  button{font:inherit;cursor:pointer}.chip{flex:none;display:flex;align-items:center;gap:7px;background:#53646612;border:0;border-radius:17px;height:52px;padding:0 11px;color:#263437;font-size:12px;font-weight:600;transition:background .18s,color .18s}.chip.active{background:#223135;color:#f4f7f5}.chip b{font-size:11px;opacity:.7;font-variant-numeric:tabular-nums}.icon{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;font-size:12px;font-weight:700;background:#ffffff24}.wechat{background:#26b95c;color:white}.mail{background:#3286ef;color:white}.reminder{background:#f2f3f3;color:#dc8d3a}
+  .cards{display:grid;gap:9px;min-height:260px;align-content:start}.card{border-radius:22px;padding:14px 16px;animation:appear .2s ease}.card header{display:flex;gap:8px;align-items:center;font-size:11px;color:#526065}.card time{margin-left:auto;font-size:10px}.card .icon{height:20px;width:20px;font-size:10px;border-radius:5px}.card h2{font-size:14px;margin:10px 0 4px}.card p{font-size:13px;line-height:1.5;margin:0;color:#34474c}.stacked{box-shadow:0 5px 0 -2px #ffffff52,0 10px 0 -4px #ffffff29;margin-bottom:7px}.more{margin-top:8px!important;font-size:10px!important;color:#64777a!important}.foot{text-align:center;font-size:10px;color:#ffffff65;margin:20px 0}.home{width:110px;height:4px;border-radius:9px;background:#ffffffbc;margin:25px auto 0}.note{color:#84979f;text-align:center;font-size:11px;line-height:1.8;margin:20px 0}
+  @keyframes appear{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media(max-width:360px){.phone{border-radius:30px;padding-inline:12px}.heading span{font-size:9px}}
+</style>
+<main>
+  <div class="intro"><small>ISLAND DIGEST</small><h1>灵屿通知</h1><p>按应用整理，让锁屏清爽一点。<br>点选应用胶囊，试试筛选效果。</p></div>
+  <section class="phone" aria-label="锁屏设计示意">
+    <div class="status"><span>9:41</span><span>◉ &nbsp; ▰</span></div>
+    <div class="lock" aria-hidden="true">⌑</div><div class="date">10月21日 星期三</div><div class="clock">09:41</div><div class="sub">每一条消息，都井井有条。</div>
+    <section class="digest glass" aria-label="通知归纳">
+      <div class="heading"><strong>通知归纳</strong><span>3 个应用 · 9 条</span></div>
+      <div class="chips" role="group" aria-label="按应用筛选">
+        <button class="chip active" data-app="all" aria-pressed="true"><span class="icon">▤</span>全部<b>9</b></button>
+        <button class="chip" data-app="wechat" aria-pressed="false"><span class="icon wechat">聊</span>微信<b>5</b></button>
+        <button class="chip" data-app="mail" aria-pressed="false"><span class="icon mail">✉</span>邮件<b>3</b></button>
+        <button class="chip" data-app="reminder" aria-pressed="false"><span class="icon reminder">≡</span>提醒事项<b>1</b></button>
+      </div>
+    </section>
+    <div class="cards" aria-live="polite"></div>
+    <div class="foot">原生通知，照常展开、回复与清除</div><div class="home"></div>
+  </section>
+  <p class="note">交互设计示意 · 使用虚构消息和简化图标<br>实际图标、壁纸、时钟与通知卡片由系统提供。</p>
+</main>
+<script>
+  const samples = [
+    {app:"wechat", name:"微信", icon:"聊", title:"周末出行", body:"集合时间定好啦，周六上午见。", time:"现在", more:"还有 4 条通知"},
+    {app:"mail", name:"邮件", icon:"✉", title:"设计评审邀请", body:"新的会议邀请：明天 10:00，产品讨论。", time:"2 分钟前", more:"还有 2 条通知"},
+    {app:"reminder", name:"提醒事项", icon:"≡", title:"给自己留点时间", body:"今晚 8:00 · 散步 30 分钟", time:"5 分钟前", more:""}
+  ];
+  function show(app) {
+    document.querySelectorAll(".chip").forEach(button => {
+      const active = button.dataset.app === app;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const cards = document.querySelector(".cards");
+    cards.replaceChildren();
+    samples.filter(item => app === "all" || item.app === app).forEach(item => {
+      const card = document.createElement("article");
+      card.className = "card glass" + (item.more ? " stacked" : "");
+      const header = document.createElement("header");
+      const icon = document.createElement("span");
+      icon.className = "icon " + item.app;
+      icon.textContent = item.icon;
+      const name = document.createElement("span");
+      name.textContent = item.name;
+      const time = document.createElement("time");
+      time.textContent = item.time;
+      header.append(icon, name, time);
+      const title = document.createElement("h2");
+      title.textContent = item.title;
+      const body = document.createElement("p");
+      body.textContent = item.body;
+      card.append(header, title, body);
+      if (item.more) {
+        const more = document.createElement("p");
+        more.className = "more";
+        more.textContent = item.more;
+        card.append(more);
+      }
+      cards.append(card);
+    });
+  }
+  document.querySelectorAll(".chip").forEach(button => button.addEventListener("click", () => {
+    show(button.classList.contains("active") ? "all" : button.dataset.app);
+  }));
+  show("all");
+</script>
+</html>

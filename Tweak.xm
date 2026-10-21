@@ -1,0 +1,705 @@
+#import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <time.h>
+#include <fcntl.h>
+#include <errno.h>
+
+@interface NCNotificationStructuredListViewController : UIViewController
+@end
+
+@interface NCNotificationListSupplementaryViewConfiguration : NSObject
+- (instancetype)_initWithGroupingIdentifier:(NSString *)identifier groupName:(NSString *)name
+    defaultAction:(id)action supplementaryActions:(NSArray *)actions
+    auxiliaryOptionsSummaryText:(NSString *)summary auxiliaryOptionActions:(NSArray *)options
+    tintColor:(UIColor *)tint textColor:(UIColor *)text materialRecipe:(NSInteger)recipe
+    containsUnmanagedContent:(BOOL)unmanaged preventsUserDismissal:(BOOL)prevents;
+@end
+
+static void IDLog(const char *event) {
+#ifdef ID_REGRESSION
+    return;
+#endif
+    FILE *file = fopen("/var/mobile/Library/Logs/IslandDigest.log", "a");
+    if (!file) {
+        int failure = errno;
+        file = fopen("/tmp/IslandDigest.log", "a");
+        if (!file) {
+            fprintf(stderr, "[IslandDigest] log unavailable primary_errno=%d fallback_errno=%d event=%s\n",
+                failure, errno, event);
+            return;
+        }
+        fprintf(file, "primary_log_errno=%d ", failure);
+    }
+    fprintf(file, "%lld pid=%d %s\n", (long long)time(NULL), getpid(), event);
+    fclose(file);
+}
+
+static int IDAcquireStartupMarker(const char *path) {
+    int descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (descriptor < 0) return errno == EEXIST ? 1 : 2;
+    char record[64];
+    int length = snprintf(record, sizeof(record), "pid=%d time=%lld\n", getpid(), (long long)time(NULL));
+    ssize_t written = write(descriptor, record, (size_t)length);
+    close(descriptor);
+    if (written != length) {
+        unlink(path);
+        return 2;
+    }
+    return 0;
+}
+
+#ifdef ID_REGRESSION
+static NSString *IDStartupMarkerOverride;
+#endif
+
+static const char *IDStartupMarkerPath(void) {
+#ifdef ID_REGRESSION
+    return IDStartupMarkerOverride.fileSystemRepresentation;
+#else
+    return "/var/mobile/Library/Logs/IslandDigest-0.1.4.startup-pending";
+#endif
+}
+
+static NSString *IDText(const char *text) {
+    return [NSString stringWithUTF8String:text];
+}
+
+static BOOL IDMethod(Class target, const char *name, const char *result, unsigned int arguments) {
+    Method method = class_getInstanceMethod(target, sel_registerName(name));
+    if (!method || method_getNumberOfArguments(method) != arguments) return NO;
+    char *type = method_copyReturnType(method);
+    BOOL matches = type && strcmp(type, result) == 0;
+    free(type);
+    return matches;
+}
+
+static BOOL IDArgument(Class target, const char *name, unsigned int index, const char *expected) {
+    Method method = class_getInstanceMethod(target, sel_registerName(name));
+    if (!method || index >= method_getNumberOfArguments(method)) return NO;
+    char *type = method_copyArgumentType(method, index);
+    BOOL matches = type && strcmp(type, expected) == 0;
+    free(type);
+    return matches;
+}
+
+static id IDRead(id object, const char *name) {
+    SEL selector = sel_registerName(name);
+    if (!object || !IDMethod(object_getClass(object), name, "@", 2)) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+}
+
+static NSArray *IDItems(id object) {
+    if ([object isKindOfClass:[NSArray class]]) return object;
+    if ([object isKindOfClass:[NSSet class]]) return [object allObjects];
+    if ([object isKindOfClass:[NSOrderedSet class]]) return [object array];
+    return @[];
+}
+
+static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
+    if (!object || depth > 8) return;
+    if (IDMethod(object_getClass(object), "sectionIdentifier", "@", 2)) {
+        [requests addObject:object];
+        return;
+    }
+    NSArray *items = [object isKindOfClass:NSDictionary.class] ? [object allValues] : IDItems(object);
+    for (id item in items) IDCollectRequests(item, requests, depth + 1);
+}
+
+@interface IDGroup : NSObject
+@property(nonatomic, copy) NSString *identifier;
+@property(nonatomic, copy) NSString *name;
+@property(nonatomic, strong) UIImage *icon;
+@property(nonatomic, strong) NSDate *latest;
+@property(nonatomic) NSUInteger count;
+@property(nonatomic) BOOL hasCriticalAlert;
+@end
+@implementation IDGroup
+@end
+
+@class IDCoordinator;
+
+@interface IDDigestView : UIView
+@property(nonatomic, strong) UIVisualEffectView *glass;
+@property(nonatomic, strong) UILabel *heading;
+@property(nonatomic, strong) UILabel *detail;
+@property(nonatomic, strong) UIScrollView *scroll;
+@property(nonatomic, strong) UIStackView *stack;
+@property(nonatomic, weak) IDCoordinator *coordinator;
+- (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected;
+@end
+
+@interface IDDigestController : UIViewController
+@property(nonatomic, weak) IDCoordinator *coordinator;
+@end
+
+@interface IDCoordinator : NSObject
+@property(nonatomic, weak) UIViewController *owner;
+@property(nonatomic, strong) IDDigestController *panel;
+@property(nonatomic, strong) id container;
+@property(nonatomic, strong) id configuration;
+@property(nonatomic, copy) NSArray<IDGroup *> *groups;
+@property(nonatomic, copy) NSString *selected;
+@property(nonatomic, copy) NSString *renderedSelection;
+@property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
+@property(nonatomic) BOOL inserted;
+@property(nonatomic) BOOL updating;
+@property(nonatomic) BOOL applyingFilter;
+@property(nonatomic) BOOL filterReconcilePending;
+@property(nonatomic) BOOL active;
+@property(nonatomic) BOOL disabled;
+@property(nonatomic) NSUInteger recoveryAttempts;
+- (void)refresh;
+- (void)selectIdentifier:(NSString *)identifier;
+- (void)resetFilter;
+- (void)disable;
+- (void)recover;
+@end
+
+static char IDCoordinatorKey;
+static NSHashTable *IDOwners;
+static BOOL IDRefreshPending;
+static BOOL IDFilteringReady;
+
+static IDCoordinator *IDState(id owner) {
+    return objc_getAssociatedObject(owner, &IDCoordinatorKey);
+}
+
+static void IDScheduleRefresh(void) {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ IDScheduleRefresh(); });
+        return;
+    }
+    if (IDRefreshPending) return;
+    IDRefreshPending = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDRefreshPending = NO;
+        for (id owner in IDOwners.allObjects) {
+            IDCoordinator *state = IDState(owner);
+            if (state.active) [state refresh];
+        }
+    });
+}
+
+@implementation IDDigestView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (!self) return nil;
+    self.layer.cornerRadius = 24;
+    self.layer.cornerCurve = kCACornerCurveContinuous;
+    self.clipsToBounds = YES;
+    self.glass = [[UIVisualEffectView alloc] initWithEffect:
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial]];
+    self.glass.userInteractionEnabled = NO;
+    [self addSubview:self.glass];
+    self.heading = [UILabel new];
+    self.heading.text = IDText("通知归纳");
+    self.heading.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    self.heading.textColor = UIColor.labelColor;
+    self.heading.adjustsFontForContentSizeCategory = YES;
+    [self addSubview:self.heading];
+    self.detail = [UILabel new];
+    self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    self.detail.textColor = UIColor.secondaryLabelColor;
+    self.detail.textAlignment = NSTextAlignmentRight;
+    self.detail.adjustsFontSizeToFitWidth = YES;
+    [self addSubview:self.detail];
+    self.scroll = [UIScrollView new];
+    self.scroll.showsHorizontalScrollIndicator = NO;
+    self.scroll.alwaysBounceHorizontal = YES;
+    [self addSubview:self.scroll];
+    self.stack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    self.stack.axis = UILayoutConstraintAxisHorizontal;
+    self.stack.spacing = 8;
+    self.stack.alignment = UIStackViewAlignmentFill;
+    [self.scroll addSubview:self.stack];
+    self.accessibilityIdentifier = IDText("IslandDigest");
+    return self;
+}
+
+- (CGSize)sizeThatFits:(CGSize)size {
+    return CGSizeMake(size.width, 112);
+}
+
+- (CGSize)intrinsicContentSize {
+    return CGSizeMake(UIViewNoIntrinsicMetric, 112);
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = CGRectGetWidth(self.bounds);
+    self.glass.frame = self.bounds;
+    self.heading.frame = CGRectMake(16, 12, width * 0.45, 22);
+    self.detail.frame = CGRectMake(width * 0.5, 15, width * 0.5 - 16, 18);
+    self.scroll.frame = CGRectMake(0, 44, width, 56);
+    CGSize fitting = [self.stack systemLayoutSizeFittingSize:
+        CGSizeMake(UILayoutFittingCompressedSize.width, 52)
+        withHorizontalFittingPriority:UILayoutPriorityFittingSizeLevel
+        verticalFittingPriority:UILayoutPriorityRequired];
+    self.stack.frame = CGRectMake(14, 0, fitting.width, 52);
+    self.scroll.contentSize = CGSizeMake(fitting.width + 28, 56);
+}
+
+- (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected {
+    CGPoint offset = self.scroll.contentOffset;
+    for (UIView *view in self.stack.arrangedSubviews.copy) {
+        [self.stack removeArrangedSubview:view];
+        [view removeFromSuperview];
+    }
+    NSUInteger total = 0;
+    for (IDGroup *group in groups) total += group.count;
+    self.detail.text = [NSString stringWithFormat:IDText("%lu 个应用 · %lu 条"),
+        (unsigned long)groups.count, (unsigned long)total];
+    NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];
+    [entries addObjectsFromArray:groups];
+    for (id entry in entries) {
+        IDGroup *group = entry == NSNull.null ? nil : entry;
+        BOOL active = group ? [selected isEqualToString:group.identifier] : !selected;
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.layer.cornerRadius = 17;
+        button.layer.cornerCurve = kCACornerCurveContinuous;
+        button.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9]
+            : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
+        UIColor *foreground = active ? UIColor.systemBackgroundColor : UIColor.labelColor;
+        UIStackView *content = [UIStackView new];
+        content.axis = UILayoutConstraintAxisHorizontal;
+        content.alignment = UIStackViewAlignmentCenter;
+        content.spacing = 7;
+        content.userInteractionEnabled = NO;
+        content.translatesAutoresizingMaskIntoConstraints = NO;
+        [button addSubview:content];
+        UIImageView *icon = [[UIImageView alloc] initWithImage:
+            group.icon ?: [UIImage systemImageNamed:IDText(group ? "app.fill" : "square.stack.3d.up.fill")]];
+        icon.tintColor = foreground;
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.layer.cornerRadius = 7;
+        icon.clipsToBounds = YES;
+        [content addArrangedSubview:icon];
+        [icon.widthAnchor constraintEqualToConstant:26].active = YES;
+        [icon.heightAnchor constraintEqualToConstant:26].active = YES;
+        UILabel *name = [UILabel new];
+        name.text = group ? group.name : IDText("全部");
+        name.textColor = foreground;
+        name.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+        name.lineBreakMode = NSLineBreakByTruncatingTail;
+        [name.widthAnchor constraintLessThanOrEqualToConstant:80].active = YES;
+        [content addArrangedSubview:name];
+        UILabel *badge = [UILabel new];
+        NSUInteger count = group ? group.count : total;
+        badge.text = count > 99 ? IDText("99+") : [NSString stringWithFormat:IDText("%lu"), (unsigned long)count];
+        badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold];
+        badge.textColor = foreground;
+        badge.alpha = 0.75;
+        [content addArrangedSubview:badge];
+        [NSLayoutConstraint activateConstraints:@[
+            [content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:11],
+            [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-11],
+            [content.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+            [content.topAnchor constraintGreaterThanOrEqualToAnchor:button.topAnchor constant:8],
+            [content.bottomAnchor constraintLessThanOrEqualToAnchor:button.bottomAnchor constant:-8]
+        ]];
+        button.accessibilityLabel = [NSString stringWithFormat:IDText("%@，%lu 条通知"),
+            group ? group.name : IDText("全部"), (unsigned long)count];
+        button.accessibilityTraits = UIAccessibilityTraitButton | (active ? UIAccessibilityTraitSelected : 0);
+        __weak IDCoordinator *coordinator = self.coordinator;
+        NSString *identifier = group.identifier;
+        [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            [coordinator selectIdentifier:identifier];
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [self.stack addArrangedSubview:button];
+    }
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+    CGFloat maxOffset = MAX(0, self.scroll.contentSize.width - self.scroll.bounds.size.width);
+    self.scroll.contentOffset = CGPointMake(MIN(MAX(0, offset.x), maxOffset), 0);
+}
+@end
+
+@implementation IDDigestController
+- (void)loadView {
+    IDDigestView *view = [[IDDigestView alloc] initWithFrame:CGRectMake(0, 0, 350, 112)];
+    view.coordinator = self.coordinator;
+    self.view = view;
+    self.preferredContentSize = CGSizeMake(350, 112);
+}
+- (BOOL)_canShowWhileLocked {
+    return YES;
+}
+@end
+
+@implementation IDCoordinator
+
+- (instancetype)init {
+    self = [super init];
+    if (self) self.filtered = [NSMutableSet new];
+    return self;
+}
+
+- (NSArray<IDGroup *> *)snapshot {
+    id master = IDRead(self.owner, "masterList");
+    NSArray *sections = IDItems(IDRead(master, "_notificationSectionListsForEnumeration"));
+    NSMutableSet *requests = [NSMutableSet new];
+    for (id section in sections) {
+        IDCollectRequests(IDRead(section, "allNotificationRequests"), requests, 0);
+        IDCollectRequests(IDRead(section, "filteredNotificationRequests"), requests, 0);
+    }
+    NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
+    for (id request in requests) {
+        NSString *identifier = IDRead(request, "sectionIdentifier");
+        if (![identifier isKindOfClass:NSString.class] || identifier.length == 0) continue;
+        IDGroup *group = groups[identifier];
+        if (!group) {
+            group = [IDGroup new];
+            group.identifier = identifier;
+            SEL settingsSelector = sel_registerName("_sectionSettingsForSectionIdentifier:");
+            id settings = ((id (*)(id, SEL, id))objc_msgSend)(self.owner, settingsSelector, identifier);
+            NSString *name = IDRead(settings, "displayName");
+            group.name = [name isKindOfClass:NSString.class] && name.length ? name : identifier;
+            id icon = IDRead(settings, "settingsIcon");
+            if (![icon isKindOfClass:UIImage.class]) icon = IDRead(IDRead(request, "content"), "icon");
+            if ([icon isKindOfClass:UIImage.class]) group.icon = icon;
+            group.latest = NSDate.distantPast;
+            groups[identifier] = group;
+        }
+        group.count += 1;
+        if (IDMethod(object_getClass(request), "isCriticalAlert", "B", 2)
+            && ((BOOL (*)(id, SEL))objc_msgSend)(request, sel_registerName("isCriticalAlert"))) {
+            group.hasCriticalAlert = YES;
+        }
+        NSDate *date = IDRead(request, "timestamp");
+        if ([date isKindOfClass:NSDate.class] && [date compare:group.latest] == NSOrderedDescending) {
+            group.latest = date;
+        }
+    }
+    return [groups.allValues sortedArrayUsingComparator:^NSComparisonResult(IDGroup *first, IDGroup *second) {
+        NSComparisonResult result = [second.latest compare:first.latest];
+        return result == NSOrderedSame ? [first.identifier compare:second.identifier] : result;
+    }];
+}
+
+- (BOOL)applyFilter {
+    if (!IDFilteringReady) return YES;
+    if (self.applyingFilter) {
+        self.filterReconcilePending = YES;
+        return YES;
+    }
+    self.applyingFilter = YES;
+    BOOL succeeded = YES;
+    @try {
+        for (NSUInteger pass = 0; pass < 2; pass++) {
+            self.filterReconcilePending = NO;
+            NSMutableSet *excluded = [NSMutableSet new];
+            for (IDGroup *group in self.groups) {
+                if (self.selected && !group.hasCriticalAlert && ![group.identifier isEqualToString:self.selected]) {
+                    [excluded addObject:group.identifier];
+                }
+            }
+            NSMutableSet *changed = self.filtered.mutableCopy;
+            [changed unionSet:excluded];
+            for (NSString *identifier in changed) {
+                BOOL wasFiltered = [self.filtered containsObject:identifier];
+                BOOL shouldFilter = [excluded containsObject:identifier];
+                if (wasFiltered == shouldFilter) continue;
+                if (shouldFilter) [self.filtered addObject:identifier];
+                @try {
+                    ((void (*)(id, SEL, id, BOOL))objc_msgSend)(self.owner,
+                        sel_registerName("toggleFilteringForSectionIdentifier:shouldFilter:"), identifier, shouldFilter);
+                    if (!shouldFilter) [self.filtered removeObject:identifier];
+                } @catch (NSException *exception) {
+                    NSLog(IDText("[IslandDigest] filter exception: %@"), exception.name);
+                    succeeded = NO;
+                }
+            }
+            if (!succeeded || !self.filterReconcilePending) break;
+        }
+        if (self.filterReconcilePending) succeeded = NO;
+    } @finally {
+        self.applyingFilter = NO;
+    }
+    return succeeded;
+}
+
+- (void)render {
+    if (!self.panel.isViewLoaded) return;
+    [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
+    self.renderedSelection = self.selected;
+}
+
+- (void)resetFilter {
+    self.selected = nil;
+    if (self.disabled) {
+        [self recover];
+        return;
+    }
+    if (![self applyFilter]) {
+        [self disable];
+        return;
+    }
+    if (!self.disabled && self.active) [self render];
+}
+
+- (void)recover {
+    if (self.recoveryAttempts >= 3) return;
+    self.recoveryAttempts += 1;
+    self.selected = nil;
+    if (![self applyFilter]) IDLog("filter restoration pending");
+    if (self.inserted) {
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(self.container,
+                sel_registerName("removeSupplementaryViewController:"), self.panel);
+            self.inserted = NO;
+        } @catch (NSException *exception) {
+            IDLog("panel removal failed");
+        }
+    }
+}
+
+- (void)disable {
+    self.disabled = YES;
+    self.selected = nil;
+    if (self.panel.isViewLoaded) {
+        self.panel.view.userInteractionEnabled = NO;
+        self.panel.view.hidden = YES;
+        self.panel.view.accessibilityElementsHidden = YES;
+    }
+    [self recover];
+    IDLog("disabled after interface failure");
+}
+
+- (void)selectIdentifier:(NSString *)identifier {
+    if (self.disabled || !self.active || self.updating) return;
+    self.updating = YES;
+    @try {
+        self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
+        if (![self applyFilter]) {
+            [self disable];
+            return;
+        }
+        [self render];
+        UISelectionFeedbackGenerator *feedback = [UISelectionFeedbackGenerator new];
+        [feedback selectionChanged];
+        UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, nil);
+    } @catch (NSException *exception) {
+        [self disable];
+    } @finally {
+        self.updating = NO;
+    }
+}
+
+- (void)refresh {
+    if (!self.active || self.updating || !self.owner.isViewLoaded) return;
+    if (self.disabled) {
+        [self recover];
+        return;
+    }
+    self.updating = YES;
+    @try {
+        NSArray<IDGroup *> *groups = [self snapshot];
+        BOOL unchanged = self.groups.count == groups.count;
+        BOOL selectionExists = !self.selected;
+        for (NSUInteger index = 0; index < groups.count; index++) {
+            IDGroup *group = groups[index];
+            if ([group.identifier isEqualToString:self.selected]) selectionExists = YES;
+            if (unchanged) {
+                IDGroup *previous = self.groups[index];
+                unchanged = [previous.identifier isEqualToString:group.identifier]
+                    && previous.count == group.count && [previous.name isEqualToString:group.name];
+            }
+        }
+        self.groups = groups;
+        if (!selectionExists) self.selected = nil;
+        if (![self applyFilter]) {
+            [self disable];
+            return;
+        }
+        if (groups.count == 0) {
+            if (self.inserted) {
+                ((void (*)(id, SEL, id))objc_msgSend)(self.container,
+                    sel_registerName("removeSupplementaryViewController:"), self.panel);
+                self.inserted = NO;
+            }
+            return;
+        }
+        if (!self.container) {
+            Class configurationClass = objc_getClass("NCNotificationListSupplementaryViewConfiguration");
+            self.configuration = [(NCNotificationListSupplementaryViewConfiguration *)[configurationClass alloc]
+                _initWithGroupingIdentifier:IDText("com.local.islanddigest") groupName:IDText("IslandDigest")
+                defaultAction:nil supplementaryActions:@[] auxiliaryOptionsSummaryText:nil
+                auxiliaryOptionActions:@[] tintColor:nil textColor:nil materialRecipe:0
+                containsUnmanagedContent:YES preventsUserDismissal:YES];
+            if (!self.configuration) {
+                [self disable];
+                return;
+            }
+            self.panel = [IDDigestController new];
+            self.panel.coordinator = self;
+            IDLog("creating supplementary container");
+            self.container = ((id (*)(id, SEL, NSUInteger, id, id))objc_msgSend)(self.owner,
+                sel_registerName("insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:"),
+                0, IDText("com.local.islanddigest.panel"), IDText("IslandDigest"));
+        }
+        if (!self.configuration || !self.container) {
+            [self disable];
+            return;
+        }
+        if (!self.inserted) {
+            [(IDDigestView *)self.panel.view showGroups:groups selected:self.selected];
+            self.inserted = YES;
+            IDLog("inserting panel");
+            ((void (*)(id, SEL, id, id))objc_msgSend)(self.container,
+                sel_registerName("insertSupplementaryViewController:withConfiguration:"), self.panel, self.configuration);
+            IDLog("panel inserted");
+            self.renderedSelection = self.selected;
+        } else if (!unchanged || !selectionExists
+            || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) {
+            [self render];
+        }
+    } @catch (NSException *exception) {
+        NSLog(IDText("[IslandDigest] interface exception: %@"), exception.name);
+        [self disable];
+    } @finally {
+        self.updating = NO;
+    }
+}
+@end
+
+#if !defined(ID_REGRESSION) || defined(ID_INTEGRATION)
+%group IDMain
+%hook NCNotificationStructuredListViewController
+- (void)viewDidLoad {
+    %orig;
+    IDCoordinator *state = [IDCoordinator new];
+    state.owner = self;
+    objc_setAssociatedObject(self, &IDCoordinatorKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [IDOwners addObject:self];
+    IDLog("owner loaded; panel deferred");
+}
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    IDCoordinator *state = IDState(self);
+    state.active = YES;
+    IDLog("owner appeared");
+    IDScheduleRefresh();
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    IDCoordinator *state = IDState(self);
+    state.active = NO;
+    @try {
+        [state resetFilter];
+    } @catch (NSException *exception) {
+        [state disable];
+    }
+    %orig;
+}
+- (void)insertNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)modifyNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)removeNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)notificationListComponent:(id)component didRemoveNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)notificationListBaseComponentDidRemoveAll:(id)component {
+    %orig;
+    IDScheduleRefresh();
+}
+%end
+%end
+
+%group IDFilter
+%hook NCNotificationStructuredListViewController
+- (BOOL)notificationMasterList:(id)master shouldFilterNotificationRequest:(id)request {
+    BOOL original = %orig;
+    NSString *selected = IDState(self).selected;
+    if (original || !selected) return original;
+    if (IDMethod(object_getClass(request), "isCriticalAlert", "B", 2)
+        && ((BOOL (*)(id, SEL))objc_msgSend)(request, sel_registerName("isCriticalAlert"))) return NO;
+    NSString *identifier = IDRead(request, "sectionIdentifier");
+    for (IDGroup *group in IDState(self).groups) {
+        if (group.hasCriticalAlert && [group.identifier isEqualToString:identifier]) return NO;
+    }
+    return identifier && ![selected isEqualToString:identifier];
+}
+%end
+%end
+
+static BOOL IDHooksInstalled;
+
+static void IDInstallHooks(void) {
+        if (IDHooksInstalled) return;
+        const char *marker = IDStartupMarkerPath();
+        int startupStatus = IDAcquireStartupMarker(marker);
+        if (startupStatus != 0) {
+            IDLog(startupStatus == 1 ? "previous startup incomplete; hooks skipped" :
+                "startup marker unavailable; hooks skipped");
+            return;
+        }
+        IDLog("checking notification ABI");
+        Class owner = objc_getClass("NCNotificationStructuredListViewController");
+        Class master = objc_getClass("NCNotificationMasterList");
+        Class section = objc_getClass("NCNotificationStructuredSectionList");
+        Class container = objc_getClass("NCNotificationListSupplementaryViewsSection");
+        Class configuration = objc_getClass("NCNotificationListSupplementaryViewConfiguration");
+        BOOL ready = IDMethod(owner, "masterList", "@", 2)
+            && IDMethod(master, "_notificationSectionListsForEnumeration", "@", 2)
+            && IDMethod(section, "allNotificationRequests", "@", 2)
+            && IDMethod(section, "filteredNotificationRequests", "@", 2)
+            && IDMethod(owner, "_sectionSettingsForSectionIdentifier:", "@", 3)
+            && IDMethod(owner, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", "@", 5)
+            && IDMethod(container, "insertSupplementaryViewController:withConfiguration:", "v", 4)
+            && IDMethod(container, "removeSupplementaryViewController:", "v", 3)
+            && IDMethod(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", "@", 13)
+            && IDMethod(owner, "insertNotificationRequest:", "v", 3)
+            && IDMethod(owner, "modifyNotificationRequest:", "v", 3)
+            && IDMethod(owner, "removeNotificationRequest:", "v", 3)
+            && IDMethod(owner, "notificationListComponent:didRemoveNotificationRequest:", "v", 4)
+            && IDMethod(owner, "notificationListBaseComponentDidRemoveAll:", "v", 3);
+        if (!ready) {
+            NSLog(IDText("%@"), IDText("[IslandDigest] unsupported notification interfaces; disabled"));
+            unlink(marker);
+            return;
+        }
+        IDFilteringReady = IDMethod(owner, "notificationMasterList:shouldFilterNotificationRequest:", "B", 4)
+            && IDMethod(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", "v", 4)
+            && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 2, "@")
+            && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 3, "B")
+            && IDArgument(owner, "insertSupplementaryViewsContainerAtListPosition:identifier:withDescription:", 2, "Q")
+            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 10, "q")
+            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 11, "B")
+            && IDArgument(configuration, "_initWithGroupingIdentifier:groupName:defaultAction:supplementaryActions:auxiliaryOptionsSummaryText:auxiliaryOptionActions:tintColor:textColor:materialRecipe:containsUnmanagedContent:preventsUserDismissal:", 12, "B");
+        if (!IDFilteringReady) {
+            unlink(marker);
+            return;
+        }
+        IDOwners = [NSHashTable weakObjectsHashTable];
+        IDLog("installing filter hook");
+        %init(IDFilter);
+        IDLog("installing lifecycle hooks");
+        %init(IDMain);
+        IDHooksInstalled = YES;
+        NSLog(IDText("%@"), IDText("[IslandDigest] notification digest ready"));
+        IDLog("hooks ready; awaiting visible notification interface");
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            if (unlink(IDStartupMarkerPath()) == 0) {
+                IDLog("startup main queue reached thirty-second checkpoint");
+            }
+        });
+}
+
+%ctor {
+    IDLog("image constructor entered");
+    dispatch_async(dispatch_get_main_queue(), ^{ IDInstallHooks(); });
+}
+#endif
