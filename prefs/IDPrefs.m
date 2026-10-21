@@ -3,6 +3,11 @@
 #import <UIKit/UIKit.h>
 #import "../IDShared.h"
 
+// Present in Preferences runtime (iOS 15–17), omitted by Theos' minimal header.
+@interface PSSpecifier (IDListValues)
+- (void)setValues:(NSArray *)values titles:(NSArray *)titles;
+@end
+
 @interface IDPinnedAppsController : PSListController
 @end
 @interface IDPrefsController : PSListController
