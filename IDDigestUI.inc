@@ -12,9 +12,17 @@
     self.hint.adjustsFontSizeToFitWidth = YES; [self addSubview:self.hint];
     self.scroll = [UIScrollView new]; [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
+    self.clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.clearButton setImage:[UIImage systemImageNamed:@"trash"] forState:UIControlStateNormal];
+    self.clearButton.tintColor = UIColor.systemRedColor; self.clearButton.enabled = NO;
+    self.clearButton.accessibilityLabel = @"清理当前范围通知";
+    self.clearButton.accessibilityIdentifier = @"IslandDigestClear";
+    [self.clearButton addTarget:self action:@selector(clearTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:self.clearButton];
     self.accessibilityIdentifier = @"IslandDigest";
     return self;
 }
+- (void)clearTapped { [self.coordinator beginClear]; }
 - (CGFloat)rowHeight {
     return MAX(52, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:52]));
 }
@@ -25,7 +33,7 @@
     CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
     if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
     NSUInteger visible = IDGridLayout ? IDExperienceVisibleRows(rows, ownerHeight, row) : 1;
-    return CGSizeMake(size.width, 60 + visible * row + (visible - 1) * 8);
+    return CGSizeMake(size.width, 66 + visible * row + (visible - 1) * 8);
 }
 - (CGSize)intrinsicContentSize { return CGSizeMake(UIViewNoIntrinsicMetric, [self sizeThatFits:self.bounds.size].height); }
 - (void)layoutSubviews {
@@ -35,9 +43,12 @@
     self.heading.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold] maximumPointSize:22];
     self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
     self.hint.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
-    self.heading.frame = CGRectMake(14, 8, MAX(0, width * 0.49 - 14), 26);
-    self.detail.frame = CGRectMake(width * 0.49, 12, MAX(0, width * 0.51 - 14), 20);
-    self.scroll.frame = CGRectMake(0, 38, width, MAX(row, self.bounds.size.height - 60));
+    CGFloat contentWidth = MAX(0, width - 58);
+    self.heading.frame = CGRectMake(14, 8, MAX(0, contentWidth * 0.52 - 14), 26);
+    self.heading.adjustsFontSizeToFitWidth = YES;
+    self.detail.frame = CGRectMake(contentWidth * 0.52, 12, MAX(0, contentWidth * 0.48), 20);
+    self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44);
+    self.scroll.frame = CGRectMake(0, 44, width, MAX(row, self.bounds.size.height - 66));
     self.hint.frame = CGRectMake(14, self.bounds.size.height - 19, MAX(0, width - 28), 16);
     self.scroll.showsHorizontalScrollIndicator = !IDGridLayout;
     self.scroll.showsVerticalScrollIndicator = IDGridLayout;
@@ -57,9 +68,9 @@
         index++;
     }
     CGFloat height = IDGridLayout ? IDExperienceRows(index, columns) * (row + 8) - 8 : row;
-    CGFloat contentWidth = IDGridLayout ? width : MAX(width, x + 6);
-    self.stack.frame = CGRectMake(0, 0, contentWidth, height);
-    self.scroll.contentSize = CGSizeMake(contentWidth, height);
+    CGFloat scrollWidth = IDGridLayout ? width : MAX(width, x + 6);
+    self.stack.frame = CGRectMake(0, 0, scrollWidth, height);
+    self.scroll.contentSize = CGSizeMake(scrollWidth, height);
     // A guarded coordinator update changes constraints only when the preferred size differs.
     [self.coordinator updatePanelGeometry];
 }
@@ -128,6 +139,7 @@
         }
         [self.stack addSubview:button];
     }
+    [self.coordinator updateClearButton];
     [self invalidateIntrinsicContentSize]; [self setNeedsLayout]; [self layoutIfNeeded];
     self.scroll.contentOffset = CGPointMake(MIN(MAX(0, offset.x), MAX(0, self.scroll.contentSize.width - self.scroll.bounds.size.width)), MIN(MAX(0, offset.y), MAX(0, self.scroll.contentSize.height - self.scroll.bounds.size.height)));
 }

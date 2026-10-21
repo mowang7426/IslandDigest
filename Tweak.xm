@@ -10,6 +10,7 @@
 #include <math.h>
 #import "IDShared.h"
 #import "IDExperienceLogic.h"
+#import "IDClearLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO;
@@ -18,7 +19,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.1.6";
+    IDDiagnostics[@"version"] = @"0.1.7";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -89,7 +90,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Preferences/IslandDigest-0.1.6.startup-pending";
+    return "/var/mobile/Library/Preferences/IslandDigest-0.1.7.startup-pending";
 #endif
 }
 
@@ -139,6 +140,8 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
     for (id item in items) IDCollectRequests(item, requests, depth + 1);
 }
 
+#include "IDClearSupport.inc"
+
 @interface IDGroup : NSObject
 @property(nonatomic, copy) NSString *identifier;
 @property(nonatomic, copy) NSString *name;
@@ -157,6 +160,7 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UILabel *heading;
 @property(nonatomic, strong) UILabel *detail;
 @property(nonatomic, strong) UILabel *hint;
+@property(nonatomic, strong) UIButton *clearButton;
 @property(nonatomic, strong) UIScrollView *scroll;
 @property(nonatomic, strong) UIView *stack;
 @property(nonatomic, weak) IDCoordinator *coordinator;
@@ -192,6 +196,21 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic) BOOL active;
 @property(nonatomic) BOOL disabled;
 @property(nonatomic) NSUInteger recoveryAttempts;
+@property(nonatomic) IDClearGate clearGate;
+@property(nonatomic, copy) NSArray *clearSnapshot;
+@property(nonatomic, copy) NSString *clearScope;
+@property(nonatomic, strong) id clearDelegate;
+@property(nonatomic, strong) UIAlertController *clearAlert;
+@property(nonatomic, weak) UIViewController *clearPresenterOwner;
+@property(nonatomic, weak) UIWindow *clearWindow;
+@property(nonatomic, strong) id clearMaster;
+@property(nonatomic, copy) NSString *clearMessage;
+@property(nonatomic) NSUInteger clearRevision;
+- (void)beginClear;
+- (void)cancelClear;
+- (void)updateClearButton;
+- (void)confirmClear:(unsigned long)generation;
+- (void)observeClear:(NSArray *)sent generation:(unsigned long)generation attempt:(NSUInteger)attempt;
 - (void)refresh;
 - (void)updatePanelGeometry;
 - (void)beginAppearance;
@@ -275,6 +294,8 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self) self.filtered = [NSMutableSet new];
     return self;
 }
+
+#include "IDClearCoordinator.inc"
 
 - (NSArray<IDGroup *> *)snapshot {
     id master = IDRead(self.owner, "masterList");
@@ -399,6 +420,7 @@ static BOOL IDSupplementaryReady(id owner) {
     self.renderedSelection = self.selected;
     self.renderedRevision = IDOptionsRevision;
     [self updatePanelGeometry];
+    [self updateClearButton];
 }
 
 - (void)updatePanelGeometry {
@@ -428,6 +450,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)endAppearance {
+    [self cancelClear];
     self.active = NO;
     self.dismissed = YES;
     self.openingPending = NO;
@@ -466,6 +489,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)recover {
+    [self cancelClear];
     if (self.recoveryAttempts >= 3) return;
     self.recoveryAttempts += 1;
     self.selected = nil;
@@ -490,6 +514,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)disable {
+    [self cancelClear];
     self.disabled = YES;
     self.selected = nil;
     if (self.panel.isViewLoaded) {
@@ -504,6 +529,7 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)selectIdentifier:(NSString *)identifier {
     if (self.disabled || !self.active || self.updating) return;
+    [self cancelClear]; self.clearMessage = nil;
     self.updating = YES;
     @try {
         self.openingPending = NO; // A user tap wins over an already queued first-appearance refresh.
@@ -526,6 +552,8 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)refresh {
+    if (_clearGate.pending && (self.clearRevision != IDOptionsRevision || self.clearDelegate != IDRead(self.owner, "delegate") || ![self clearAuthenticated])) [self cancelClear];
+    [self updateClearButton];
     if (!self.active || self.updating || !self.owner.isViewLoaded) return;
     if (!IDEnabled || !IDGrouping) {
         self.selected = nil;
@@ -569,7 +597,7 @@ static BOOL IDSupplementaryReady(id owner) {
         BOOL desiredExists = self.desiredSelection == nil;
         for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.desiredSelection]) desiredExists = YES;
         if (!desiredExists) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
-        if (!selectionExists) self.selected = nil;
+        if (!selectionExists) { [self cancelClear]; self.selected = nil; }
         if (![self applyFilter]) {
             [self disable];
             return;
@@ -786,6 +814,7 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         }
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
+            [state cancelClear]; state.clearMessage = nil;
             if (retry) {
                 state.recoveryAttempts = 0;
                 [state recover];
