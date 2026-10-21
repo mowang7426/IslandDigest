@@ -42,6 +42,8 @@ jobs:
           python3 tests/check_source.py
           cc -Wall -Wextra -Werror tests/Experience.c -o /tmp/id-experience-tests
           /tmp/id-experience-tests
+          cc -Wall -Wextra -Werror tests/Clear.c -o /tmp/id-clear-tests
+          /tmp/id-clear-tests
 
       - name: Build package
         run: make package FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
@@ -54,7 +56,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.1.6', '${{ matrix.scheme }}'], check=True)
+                          '0.1.7', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
