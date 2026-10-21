@@ -21,7 +21,10 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.1.9'
+assert info['CFBundleVersion'] == '0.2.0'
+assert 'AllowPreviewWhenUnlocked' in tweak and 'AllowPreviewWhenUnlocked' in prefs
+assert 'MoWang' in prefs
+assert 'contentPreviewSetting' in (root / 'IDContainedSupport.inc').read_text()
 assert 'preferenceloader' in (root/'control').read_text()
 assert plistlib.loads((root/'IslandDigest.plist').read_bytes())['Filter']['Bundles'] == ['com.apple.springboard']
 print('PASS 0.1.9 portable source/config contracts (not runtime validation)')

@@ -15,6 +15,7 @@
 #import "IDLayoutLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
+static BOOL IDPreviewWhenUnlocked = YES;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -23,7 +24,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.1.9";
+    IDDiagnostics[@"version"] = @"0.2.0";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -36,6 +37,7 @@ static void IDLoadOptions(void) {
     IDEnabled = IDPref(@"Enabled", YES);
     IDGrouping = IDPref(@"Grouping", YES);
     IDShowCounts = IDPref(@"ShowCounts", YES);
+    IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", YES);
     IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
@@ -99,7 +101,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Preferences/IslandDigest-0.1.9.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.0.startup-pending";
 #endif
 }
 
@@ -377,7 +379,7 @@ static BOOL IDSupplementaryReady(id owner) {
         sectionsReliable = IDCollectRequests(filteredRequests, requests, 0) && sectionsReliable;
     }
     self.enumerationReliable = reliable || sectionsReliable;
-    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected) : @[];
+    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected, self.owner) : @[];
     NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
     for (id request in requests) {
         NSString *identifier = IDRead(request, "sectionIdentifier");

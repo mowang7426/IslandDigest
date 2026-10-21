@@ -155,11 +155,12 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.1.9 体验版" footer:@"实验性插件内通知元数据卡片，尚不显示消息正文。原生列表默认保留，其回复和展开不变；不生成 AI 摘要、不联网、不自动清除。设置实时生效，无需自动注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.2.0 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
-    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"点击 QQ 等应用后，同一个面板下方显示该应用逐条通知的应用名称、图标、时间及隐藏占位。当前未验证逐条有效预览权限，标题、副标题和正文全部隐藏；这不是消息正文预览。最多 160 条。默认保留原生列表以查看实际消息、回复及展开。隐藏开关仅在插件内模式开启时可用，接口不匹配、枚举未知或达到上限时保留原生；退出、关闭或异常时恢复。隐藏不是清除。若开启隐藏，将无法在原生列表直接查看正文，请随时在此关闭隐藏。"]];
+    [items addObject:[self toggle:@"解锁时显示通知预览（默认开启）" key:@"AllowPreviewWhenUnlocked"]];
+    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"仅当设备已解锁、受保护数据可用、拥有者界面可见且本开关开启时读取原生 title/subtitle/message。iOS 17 私有 contentPreviewSetting 的整型值缺少可核验枚举映射，因此不猜值；未知或 App Never 策略会保持“通知内容已隐藏”。此设置不能绕过系统或 App 的 Never 预览策略。锁定时不读取正文，锁定通知到达即同步清空已显示卡片。最多 160 条。原生列表默认保留。隐藏开关仅在插件内模式开启时可用，接口不匹配或布局不可用时保留原生。"]];
     [items addObject:[self toggle:@"插件内显示通知卡片" key:@"ContainedMode"]];
     PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
     [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
