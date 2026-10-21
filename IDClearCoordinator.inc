@@ -123,11 +123,13 @@
 }
 - (void)observeClear:(NSArray *)sent generation:(unsigned long)generation attempt:(NSUInteger)attempt {
     NSArray *current = nil;
-    @try { current = [self clearRequests]; } @catch (NSException *exception) { current = nil; }
     NSUInteger remaining = 0;
-    if (current) for (NSDictionary *ticket in sent) {
-        for (id request in current) if ([IDClearKey(request) isEqual:ticket[@"key"]]) { remaining++; break; }
-    }
+    @try {
+        current = [self clearRequests];
+        if (current) for (NSDictionary *ticket in sent) {
+            for (id request in current) if ([IDClearKey(request) isEqual:ticket[@"key"]]) { remaining++; break; }
+        }
+    } @catch (NSException *exception) { current = nil; remaining = 0; }
     // At most three read-only observations; never repeat the destructive call.
     if (current && remaining && attempt < 2 && generation == _clearGate.generation && self.active) {
         __weak IDCoordinator *weakSelf = self;
@@ -173,13 +175,18 @@
             }
         }
         if (!send.count) { [self cancelClear]; [self clearFeedback:@"快照通知已消失或受保护，未提交清理"]; return; }
-        if (!IDClearConfirm(&_clearGate, generation, context)) return;
-        self.clearAlert = nil; self.clearSnapshot = nil; self.clearScope = nil; self.clearDelegate = nil;
-        [self clearFeedback:@"清理请求提交中；正在核实原快照…"];
-        [self updateClearButton];
-        // The ONLY destructive dispatch. Exact immutable subset, no clear-all/section selector.
+        context = self.active && !self.disabled && self.clearRevision == IDOptionsRevision
+            && self.clearDelegate == IDRead(self.owner, "delegate") && self.clearMaster == IDRead(self.owner, "masterList")
+            && self.owner.viewIfLoaded.window == self.clearWindow && [self clearAuthenticated]
+            && ((!self.clearScope && !self.selected) || [self.clearScope isEqual:self.selected]);
+        if (!IDClearConfirm(&_clearGate, generation, context)) { [self cancelClear]; return; }
+        // The ONLY destructive dispatch. No UI/capability callbacks between gate and dispatch.
         submitted = YES;
         ((void (*)(id, SEL, id, id))objc_msgSend)(delegate, sel_registerName(IDClearSelector), self.owner, send.copy);
+        self.clearAlert = nil; self.clearSnapshot = nil; self.clearScope = nil; self.clearDelegate = nil;
+        self.clearPresenterOwner = nil; self.clearWindow = nil; self.clearMaster = nil;
+        [self clearFeedback:@"清理请求已提交；正在核实原快照…"];
+        [self updateClearButton];
         NSArray *sentSnapshot = sent.copy;
         __weak IDCoordinator *weakSelf = self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

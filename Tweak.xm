@@ -552,7 +552,10 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)refresh {
-    if (_clearGate.pending && (self.clearRevision != IDOptionsRevision || self.clearDelegate != IDRead(self.owner, "delegate") || ![self clearAuthenticated])) [self cancelClear];
+    @try {
+        if (_clearGate.pending && (self.clearRevision != IDOptionsRevision || self.clearDelegate != IDRead(self.owner, "delegate")
+            || self.clearMaster != IDRead(self.owner, "masterList") || ![self clearAuthenticated])) [self cancelClear];
+    } @catch (NSException *exception) { [self cancelClear]; }
     [self updateClearButton];
     if (!self.active || self.updating || !self.owner.isViewLoaded) return;
     if (!IDEnabled || !IDGrouping) {
