@@ -74,6 +74,7 @@
             __weak IDCoordinator *weakCoordinator = self.coordinator;
             __weak UIButton *weakShell = shell;
             NSDictionary *cardModel = card;
+            objc_setAssociatedObject(shell, @selector(rebuildCardTapOverlay), cardModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [shell addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
                 // First operation is visible feedback; native action/auth is secondary.
                 IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
