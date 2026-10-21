@@ -75,7 +75,8 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
                     b"cardsRendered", b"cardsRedacted"):
             assert key in binary and key in prefs_binary, ("missing contained contract", key)
         assert b"contentPreviewSetting" in binary
-        assert b"AllowPreviewWhenUnlocked" in binary and b"MoWang" in prefs_binary
+        assert b"AllowPreviewWhenUnlocked" in binary
+        assert "Author: MoWang" in metadata
         assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
     if expected_version in ("0.1.9", "0.2.0"):
         for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
