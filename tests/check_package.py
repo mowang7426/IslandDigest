@@ -66,7 +66,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
         for icon_path, size in ((entry_icon, 1024), (icon_master, 1024), (icon_2x, 120), (icon_3x, 180), (icon_bundle, 1024)):
             icon = payload.extractfile(paths[icon_path]).read()
-            assert icon[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
+            assert icon[:8] == b'\x89PNG\r\n\x1a\n'
             assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
             assert len(icon) > 1000, icon_path
     if expected_version in ("0.1.8", "0.1.9", "0.2.0"):
