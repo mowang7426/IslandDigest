@@ -61,7 +61,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.2.2', '${{ matrix.scheme }}'], check=True)
+                          '0.2.3', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

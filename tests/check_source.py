@@ -21,10 +21,14 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.2.2'
-assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in (root / 'IDContainedUI.inc').read_text()
-assert 'UIControlEventTouchUpInside' in (root / 'IDContainedUI.inc').read_text()
-assert '打开通知不可用' in (root / 'IDContainedUI.inc').read_text()
+assert info['CFBundleVersion'] == '0.2.3'
+ui_contained = (root / 'IDContainedUI.inc').read_text()
+assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in ui_contained
+assert 'shell.userInteractionEnabled = YES' in ui_contained
+assert '打开诊断：点击已收到' in tweak
+assert 'NCNotificationMasterList' in tweak and 'IDRead(self.owner, "masterList")' in tweak
+assert 'method_getNumberOfArguments(executeMethod) == 8' in tweak
+assert 'strcmp(method_getTypeEncoding(executeMethod), "v@:@@@B@@") == 0' in tweak
 assert 'UIApplication.sharedApplication.openURL' not in tweak and 'openURL:' not in tweak
 assert 'requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:' in tweak
 assert 'void (^completion)(void)' in tweak

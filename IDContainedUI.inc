@@ -37,6 +37,7 @@
         [self.cardStack addArrangedSubview:heading];
         for (NSDictionary *card in cards) {
             UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]; shell.layer.cornerRadius = 16;
+            shell.userInteractionEnabled = YES;
             shell.translatesAutoresizingMaskIntoConstraints = NO;
             shell.accessibilityIdentifier = @"IDContainedCard";
             [shell.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;

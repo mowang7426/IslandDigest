@@ -24,7 +24,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.2";
+    IDDiagnostics[@"version"] = @"0.2.3";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -821,54 +821,74 @@ static BOOL IDOpenFeedback(NSString *message) {
 - (BOOL)openCardRequest:(id)request {
     if (!NSThread.isMainThread || !request || !self.owner.view.window || self.owner.view.hidden
         || self.owner.view.window.hidden || !UIApplication.sharedApplication.protectedDataAvailable) {
-        IDOpenFeedback(@"打开通知不可用");
+        IDOpenFeedback(@"打开诊断：点击已收到；系统上下文不可用");
         return NO;
     }
+    IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
     SEL authSEL = sel_registerName("isDeviceAuthenticated");
     if (!IDMethod(object_getClass(self.owner), "isDeviceAuthenticated", "B", 2)
         || !((BOOL (*)(id, SEL))objc_msgSend)(self.owner, authSEL)) {
-        IDOpenFeedback(@"打开通知不可用");
+        IDOpenFeedback(@"打开诊断：设备认证不可用");
         return NO;
     }
     id action = IDRead(request, "defaultAction");
     if (!action) {
-        IDOpenFeedback(@"打开通知不可用");
+        IDOpenFeedback(@"打开诊断：该通知没有可用原生打开动作");
         return NO;
     }
 
+    IDOpenFeedback(@"打开诊断：原生动作已找到");
+
     /*
-     * This is the iOS 17 native path used by the structured list delegate.
-     * Do not manufacture a URL or instantiate an unattached NCNotificationViewController:
-     * that controller has no delegate/action context and silently no-ops. Every selector
-     * and argument encoding is checked before objc_msgSend, including the completion block.
+     * iOS 17 declares this callback on NCNotificationStructuredListViewController,
+     * but its first argument is the actual NCNotificationListComponent.  The
+     * supplementary-view container is not that component and silently does nothing.
+     * Resolve masterList, require its exact runtime class, and check the complete ABI
+     * before objc_msgSend. No URL is manufactured and no notification text is logged.
      */
     const char *selectorName = "notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:";
     Class ownerClass = object_getClass(self.owner);
-    if (!IDMethod(ownerClass, selectorName, "v", 8)
-        || !IDArgument(ownerClass, selectorName, 2, "@")
-        || !IDArgument(ownerClass, selectorName, 3, "@")
-        || !IDArgument(ownerClass, selectorName, 4, "@")
-        || !IDArgument(ownerClass, selectorName, 5, "B")
-        || !IDArgument(ownerClass, selectorName, 6, "@")
-        || !IDArgument(ownerClass, selectorName, 7, "@")) {
-        IDOpenFeedback(@"打开通知不可用");
+    Class componentClass = objc_getClass("NCNotificationMasterList");
+    id component = IDRead(self.owner, "masterList");
+    Method executeMethod = class_getInstanceMethod(ownerClass, sel_registerName(selectorName));
+    BOOL abiOK = executeMethod && method_getNumberOfArguments(executeMethod) == 8
+        && strcmp(method_getTypeEncoding(executeMethod), "v@:@@@B@@") == 0
+        && IDArgument(ownerClass, selectorName, 2, "@")
+        && IDArgument(ownerClass, selectorName, 3, "@")
+        && IDArgument(ownerClass, selectorName, 4, "@")
+        && IDArgument(ownerClass, selectorName, 5, "B")
+        && IDArgument(ownerClass, selectorName, 6, "@")
+        && IDArgument(ownerClass, selectorName, 7, "@");
+    if (!componentClass || !component || object_getClass(component) != componentClass || !abiOK) {
+        IDOpenFeedback(@"打开诊断：原生组件或动作 ABI 不匹配");
         return NO;
     }
-    // Retain the exact request/action until native completion; do not re-fetch by identifier.
+    IDOpenFeedback(@"打开诊断：原生接收器已找到；动作 ABI 已核验");
+    IDOpenFeedback(@"打开诊断：动作与原生组件已找到；正在派发");
     self.pendingActionRequest = request;
     self.pendingAction = action;
+    __weak IDCoordinator *weakSelf = self;
     void (^completion)(void) = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.pendingActionRequest == request) {
-                self.pendingActionRequest = nil;
-                self.pendingAction = nil;
-                IDOpenFeedback(@"已请求打开通知");
+            IDCoordinator *strongSelf = weakSelf;
+            if (strongSelf.pendingActionRequest == request) {
+                strongSelf.pendingActionRequest = nil;
+                strongSelf.pendingAction = nil;
+                IDOpenFeedback(@"打开诊断：原生动作回调已到达");
             }
         });
     };
-    ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(self.owner,
-        sel_registerName(selectorName), self.container, action, request, YES, nil, completion);
-    IDOpenFeedback(@"已请求打开通知");
+    @try {
+        ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(self.owner,
+            sel_registerName(selectorName), component, action, request, YES, nil, completion);
+    } @catch (NSException *exception) {
+        self.pendingActionRequest = nil;
+        self.pendingAction = nil;
+        IDOpenFeedback(@"打开诊断：原生派发抛出异常");
+        return NO;
+    }
+    // This means the verified callback was invoked, not that the app launched.
+    IDOpenFeedback(@"打开诊断：派发已接受；等待原生回调");
     return YES;
 }
 @end

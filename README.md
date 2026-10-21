@@ -1,8 +1,8 @@
-# 灵屿通知 0.2.2 · MoWang
+# 灵屿通知 0.2.3 · MoWang
 
-基于 `feature/0.2.1-interaction`。本版仅修复两项用户反馈：设置图标使用带更大透明留白的高分辨率 PNG，通知卡片使用 `UIButton` 触摸事件并通过 iOS 17 结构列表控制器的原生 `requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:` 路径执行原始 request 的 `defaultAction`。原生接口或动作不可用时显示“打开通知不可用”，不生成 URL，也不承诺直接进入会话。
+基于 `feature/0.2.2-action-icon`。本版修复通知卡片动作无效：iOS 17 的回调接收者仍是结构列表控制器，但第一个参数必须是实际 `NCNotificationMasterList`，不能误传插件的 supplementary 容器。现在仅在运行时类、方法完整签名和参数编码全部匹配后派发原始 request 的 `defaultAction`；卡片点击、组件解析、ABI 检查、派发和原生 completion 均在卡片底部显示阶段诊断。原生动作不存在时明确显示“该通知没有可用原生打开动作”，不生成 URL、不猜测 QQ 聊天目标。
 
-**0.2.2 验证边界：**源码契约、双 RootHide/rootless CI 构建、包结构/签名/哈希检查可自动验证；未安装、注销、重启 SpringBoard，也未做真机真实通知动作验收。
+**0.2.3 验证边界：**源码契约、双 RootHide/rootless CI 构建、包结构/签名/哈希检查可自动验证；未安装、注销、重启 SpringBoard，也未做真机真实通知动作验收。直接进入 QQ 对话仍取决于原始通知 payload 的 native action；插件不能凭空保证目标会话。
 **通知正文隐私边界：**“解锁时显示通知预览”默认关闭，只有用户明确开启后才为插件授权；卡片读取 title/subtitle/message 前必须在主线程、拥有者界面可见、`protectedDataAvailable` 且 request 的 content/options 均可用。锁定或受保护数据不可用时同步清空卡片及无障碍字符串。iOS 17 运行时头文件只给出不透明的 `contentPreviewSetting` 整数，仓库没有可验证的逐条枚举/有效策略映射，因此不猜值、不用 native view 可见性作权限。明确开启后可能无法保持每个 App 的“永不显示预览”语义；设置页对此警告。未开启、锁定或任一门控未知时保留“通知内容已隐藏”。不写正文到日志、偏好、网络。
 
 要显示预览，请在理解上述限制后，手动开启“解锁时显示通知预览（默认关闭）”。隐藏原生通知列表仍默认关闭；原生列表可继续使用系统正文、回复与展开。卡片仅为静态预览，不承诺点按打开或快捷回复。
