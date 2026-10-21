@@ -47,8 +47,9 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         icon_master = prefs_base + "IslandDigest-icon.png"
         icon_2x = prefs_base + "IslandDigest-icon@2x.png"
         icon_3x = prefs_base + "IslandDigest-icon@3x.png"
+        icon_bundle = prefs_base + "IslandDigest.png"
         required = {tweak_path, filter_path, prefs_path, info_path, entry_path, entry_icon,
-                    icon_master, icon_2x, icon_3x}
+                    icon_master, icon_2x, icon_3x, icon_bundle}
         assert required <= paths.keys(), paths.keys()
         assert all(path in required or (path.startswith(prefs_base) and
                    path.endswith(("_CodeSignature/CodeResources",))) for path in paths), paths.keys()
@@ -63,7 +64,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
-        for icon_path, size in ((entry_icon, 1024), (icon_master, 1024), (icon_2x, 120), (icon_3x, 180)):
+        for icon_path, size in ((entry_icon, 1024), (icon_master, 1024), (icon_2x, 120), (icon_3x, 180), (icon_bundle, 1024)):
             icon = payload.extractfile(paths[icon_path]).read()
             assert icon[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
             assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
