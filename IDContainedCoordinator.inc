@@ -25,7 +25,10 @@
     BOOL snapshotComplete = totalRequests < IDContainedLimit && self.cards.count < IDContainedLimit;
     id currentToken = compatible ? objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey) : nil;
     BOOL ownsOrUnclaimed = !currentToken || currentToken == self.nativeHideToken;
-    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed;
+    IDDigestView *digest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
+    BOOL cardViewportVisible = digest.cardScroll.window && !digest.cardScroll.hidden
+        && digest.cardScroll.bounds.size.height >= 44 && digest.cardScroll.bounds.size.width >= 44;
+    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible;
     BOOL shouldHide = IDContainedShouldHide(IDEnabled, IDGrouping, IDContainedMode, IDHideNative,
         self.active, self.disabled, supported, self.panel.view.window && !self.panel.view.hidden, self.cards.count);
     if (IDContainedMustRestore(self.hiddenNativeList != candidate, shouldHide)) [self restoreNativeList];
@@ -47,6 +50,7 @@
         : !ownsOrUnclaimed ? @"原生列表被其他面板持有；保留原生列表"
         : !compatible ? @"原生列表接口不匹配；保留原生列表"
         : !separate ? @"面板未独立挂载；保留原生列表"
+        : !cardViewportVisible ? @"卡片可视空间不足；保留原生列表"
         : shouldHide ? @"已隐藏原生列表；未删除任何通知"
         : @"面板不可见或无卡片；保留原生列表";
     IDDiagnostics[@"nativeHideReason"] = self.nativeHideReason;

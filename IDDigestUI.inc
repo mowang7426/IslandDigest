@@ -13,7 +13,7 @@
     self.scroll = [UIScrollView new]; [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
     self.cardScroll = [UIScrollView new]; self.cardScroll.alwaysBounceVertical = YES;
-    self.cardScroll.accessibilityLabel = @"插件内通知预览"; [self addSubview:self.cardScroll];
+    self.cardScroll.accessibilityLabel = @"插件内通知元数据卡片"; [self addSubview:self.cardScroll];
     self.cardStack = [UIStackView new]; self.cardStack.axis = UILayoutConstraintAxisVertical;
     self.cardStack.spacing = 10; self.cardStack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.cardScroll addSubview:self.cardStack];

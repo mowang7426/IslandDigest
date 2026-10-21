@@ -40,3 +40,6 @@ for key in ("ContainedMode", "HideNativeList", "containedEnabled", "hideNativeRe
     assert f'@"{key}"' in prefs
 assert "snapshotComplete" in coordinator
 assert "IDNativeHideOwnerKey" in coordinator
+assert "cardViewportVisible" in coordinator and "bounds.size.height >= 44" in coordinator
+assert "depth > 8 || requests.count >= 4096" in main
+assert "reliable = IDCollectRequests(allRequests, requests, 0) && reliable" in main
