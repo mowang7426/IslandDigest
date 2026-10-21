@@ -16,7 +16,7 @@
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
-static BOOL IDGridLayout = NO, IDRememberFilter = NO;
+static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
 static NSInteger IDSortMode;
@@ -24,7 +24,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.0";
+    IDDiagnostics[@"version"] = @"0.2.1";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -39,6 +39,7 @@ static void IDLoadOptions(void) {
     IDShowCounts = IDPref(@"ShowCounts", YES);
     IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", NO);
     IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
+    IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
     IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
@@ -50,6 +51,11 @@ static void IDLoadOptions(void) {
 }
 
 @interface NCNotificationStructuredListViewController : UIViewController
+@end
+
+@interface NCNotificationViewController : UIViewController
+- (instancetype)_initWithNotificationRequest:(id)request revealingAdditionalContentOnPresentation:(BOOL)reveal;
+- (void)_executeDefaultAction:(BOOL)animated;
 @end
 
 @interface NCNotificationListSupplementaryViewConfiguration : NSObject
@@ -101,7 +107,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.0.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.1.startup-pending";
 #endif
 }
 
@@ -212,6 +218,7 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 - (void)restoreNativeList;
 - (void)updateNativeListVisibility;
 - (void)dropContainedContent;
+- (BOOL)openCardRequest:(id)request;
 @property(nonatomic, copy) NSString *selected;
 @property(nonatomic, copy) NSString *renderedSelection;
 @property(nonatomic, copy) NSString *desiredSelection;
@@ -792,6 +799,26 @@ static BOOL IDSupplementaryReady(id owner) {
     } @finally {
         self.updating = NO;
     }
+}
+- (BOOL)openCardRequest:(id)request {
+    if (!NSThread.isMainThread || !request || !self.owner.view.window || self.owner.view.hidden
+        || !UIApplication.sharedApplication.protectedDataAvailable) return NO;
+    SEL authSEL = sel_registerName("isDeviceAuthenticated");
+    if (!IDMethod(object_getClass(self.owner), "isDeviceAuthenticated", "B", 2)
+        || !((BOOL (*)(id, SEL))objc_msgSend)(self.owner, authSEL)) return NO;
+    id action = IDRead(request, "defaultAction");
+    if (!action) return NO;
+    Class viewClass = objc_getClass("NCNotificationViewController");
+    const char *initName = "_initWithNotificationRequest:revealingAdditionalContentOnPresentation:";
+    const char *executeName = "_executeDefaultAction:";
+    if (!viewClass || !IDMethod(viewClass, initName, "@", 4)
+        || !IDArgument(viewClass, initName, 2, "@") || !IDArgument(viewClass, initName, 3, "B")
+        || !IDMethod(viewClass, executeName, "v", 3) || !IDArgument(viewClass, executeName, 2, "B")) return NO;
+    NCNotificationViewController *notification = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(
+        [viewClass alloc], sel_registerName(initName), request, YES);
+    if (!notification) return NO;
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(notification, sel_registerName(executeName), YES);
+    return YES;
 }
 @end
 

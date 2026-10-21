@@ -5,8 +5,8 @@
 <key>CFBundleName</key><string>IslandDigestPrefs</string>
 <key>CFBundleExecutable</key><string>IslandDigestPrefs</string>
 <key>CFBundlePackageType</key><string>BNDL</string>
-<key>CFBundleVersion</key><string>0.2.0</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
+<key>CFBundleVersion</key><string>0.2.1</string>
+<key>CFBundleShortVersionString</key><string>0.2.1</string>
 <key>CFBundleIconFiles</key><array><string>IslandDigest-icon</string></array>
 <key>NSPrincipalClass</key><string>IDPrefsController</string>
 </dict></plist>

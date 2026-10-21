@@ -70,6 +70,7 @@ static NSArray *IDContainedSnapshot(NSSet *requests, NSString *selected, UIViewC
             @"title":allowed ? IDContainedText(IDRead(content, "title")) : @"",
             @"subtitle":allowed ? IDContainedText(IDRead(content, "subtitle")) : @"",
             @"body":allowed ? IDContainedText(IDRead(content, "message")) : @"通知内容已隐藏",
+            @"request":request,
             @"redacted":@(!allowed)}];
     }
     return cards;

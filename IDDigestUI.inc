@@ -42,7 +42,8 @@
 }
 - (void)clearTapped { [self.coordinator beginClear]; }
 - (CGFloat)rowHeight {
-    return MAX(52, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:52]));
+    CGFloat base = IDMiniControls ? 44 : 52;
+    return MAX(44, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:base]));
 }
 - (CGFloat)categoryHeightForWidth:(CGFloat)width {
     CGFloat row = [self rowHeight];
@@ -125,20 +126,20 @@
         BOOL active = group ? [selected isEqualToString:group.identifier] : !selected;
         BOOL pinned = group && [pins containsObject:group.identifier];
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.layer.cornerRadius = 17; button.layer.cornerCurve = kCACornerCurveContinuous; button.clipsToBounds = YES;
+        button.layer.cornerRadius = IDMiniControls ? 13 : 17; button.layer.cornerCurve = kCACornerCurveContinuous; button.clipsToBounds = YES;
         button.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9] : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
         UIColor *foreground = active ? UIColor.systemBackgroundColor : UIColor.labelColor;
         UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisHorizontal;
-        content.alignment = UIStackViewAlignmentCenter; content.spacing = 6; content.userInteractionEnabled = NO;
+        content.alignment = UIStackViewAlignmentCenter; content.spacing = IDMiniControls ? 4 : 6; content.userInteractionEnabled = NO;
         content.translatesAutoresizingMaskIntoConstraints = NO; [button addSubview:content];
         UIImageView *icon = [[UIImageView alloc] initWithImage:group.icon ?: [UIImage systemImageNamed:group ? @"app.fill" : @"square.stack.3d.up.fill"]];
         icon.tintColor = foreground; icon.contentMode = UIViewContentModeScaleAspectFit; icon.layer.cornerRadius = 7; icon.clipsToBounds = YES;
-        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:24].active = YES; [icon.heightAnchor constraintEqualToConstant:24].active = YES;
+        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:IDMiniControls ? 20 : 24].active = YES; [icon.heightAnchor constraintEqualToConstant:IDMiniControls ? 20 : 24].active = YES;
         UILabel *name = [UILabel new]; name.text = group ? group.name : @"全部"; name.textColor = foreground;
         name.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledFontForFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold] maximumPointSize:22];
         name.adjustsFontForContentSizeCategory = YES;
         name.lineBreakMode = NSLineBreakByTruncatingTail;
-        [name.widthAnchor constraintLessThanOrEqualToConstant:120].active = YES; [content addArrangedSubview:name];
+        [name.widthAnchor constraintLessThanOrEqualToConstant:IDMiniControls ? 100 : 120].active = YES; [content addArrangedSubview:name];
         if (pinned) {
             UIImageView *pin = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"pin.fill"]]; pin.tintColor = foreground;
             [pin.widthAnchor constraintEqualToConstant:10].active = YES; [pin.heightAnchor constraintEqualToConstant:12].active = YES; [content addArrangedSubview:pin];

@@ -34,7 +34,8 @@ assert '- (void)setDeviceAuthenticated:(BOOL)authenticated' in main
 assert '[self.cards isEqual:self.renderedCards]' in main
 assert 'if (!IDContainedMode && self.selected' in main
 assert 'NSString *selected = IDContainedMode ? nil : IDState(self).selected' in main
-assert '仅预览，不支持点按打开或快捷回复' in ui
+assert 'shell.accessibilityTraits = UIAccessibilityTraitButton' in ui
+assert 'openCardRequest' in ui and 'defaultAction' in support + main
 for forbidden in ('writeToFile', 'IDWritePreference', 'NSUserDefaults', 'NSLog', 'NSURLSession', 'openURL'):
     assert forbidden not in support + ui
 print('PASS contained privacy/hide/source guardrails (not native runtime verification)')

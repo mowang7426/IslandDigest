@@ -36,7 +36,7 @@
         heading.accessibilityTraits = UIAccessibilityTraitHeader;
         [self.cardStack addArrangedSubview:heading];
         for (NSDictionary *card in cards) {
-            UIView *shell = [UIView new]; shell.layer.cornerRadius = 16;
+            UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]; shell.layer.cornerRadius = 16;
             shell.translatesAutoresizingMaskIntoConstraints = NO;
             shell.accessibilityIdentifier = @"IDContainedCard";
             [shell.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;
@@ -66,8 +66,22 @@
                 [content.topAnchor constraintEqualToAnchor:shell.topAnchor constant:10],
                 [content.bottomAnchor constraintEqualToAnchor:shell.bottomAnchor constant:-10]]];
             shell.isAccessibilityElement = YES;
-            shell.accessibilityLabel = [NSString stringWithFormat:@"%@，%@。%@ %@ %@。仅预览，不支持点按打开或快捷回复。", group.name, relative, card[@"title"], card[@"subtitle"], card[@"body"]];
-            shell.accessibilityTraits = UIAccessibilityTraitStaticText;
+            BOOL canOpen = ![card[@"redacted"] boolValue] && card[@"request"];
+            shell.accessibilityLabel = [NSString stringWithFormat:@"%@，%@。%@ %@ %@。", group.name, relative, card[@"title"], card[@"subtitle"], card[@"body"]];
+            shell.accessibilityTraits = UIAccessibilityTraitButton;
+            shell.accessibilityHint = canOpen ? @"点按打开原生通知动作；若应用提供目标将进入对应会话。" : @"通知内容受保护，当前不可打开。";
+            __weak IDCoordinator *weakCoordinator = self.coordinator;
+            __weak UIButton *weakShell = shell;
+            NSDictionary *cardModel = card;
+            [shell addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+                BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
+                if (!opened) {
+                    weakShell.accessibilityValue = @"打开通知不可用";
+                    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
+                } else {
+                    weakShell.accessibilityValue = @"已请求打开通知";
+                }
+            }] forControlEvents:UIControlEventTouchUpInside];
             [self.cardStack addArrangedSubview:shell]; rendered++;
         }
     }
