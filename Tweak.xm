@@ -304,7 +304,16 @@ static BOOL IDSupplementaryReady(id owner) {
                 && IDArgument(object_getClass(self.owner), "_sectionSettingsForSectionIdentifier:", 2, "@")
                 ? ((id (*)(id, SEL, id))objc_msgSend)(self.owner, settingsSelector, identifier) : nil;
             NSString *name = IDRead(settings, "displayName");
-            group.name = [name isKindOfClass:NSString.class] && name.length ? name : identifier;
+            if (![name isKindOfClass:NSString.class] || !name.length) {
+                Class proxyClass = objc_getClass("LSApplicationProxy");
+                const char *lookup = "applicationProxyForIdentifier:";
+                if (IDMethod(object_getClass(proxyClass), lookup, "@", 3)
+                    && IDArgument(object_getClass(proxyClass), lookup, 2, "@")) {
+                    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, sel_registerName(lookup), identifier);
+                    name = IDRead(proxy, "localizedName");
+                }
+            }
+            group.name = [name isKindOfClass:NSString.class] && name.length ? name : @"未命名应用";
             id icon = IDRead(settings, "settingsIcon");
             if (![icon isKindOfClass:UIImage.class]) icon = IDRead(IDRead(request, "content"), "icon");
             if ([icon isKindOfClass:UIImage.class]) group.icon = icon;
@@ -396,7 +405,8 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.geometryUpdating || !self.panel.isViewLoaded) return;
     self.geometryUpdating = YES;
     @try {
-        CGFloat width = MAX(1, self.owner.view.bounds.size.width - 16);
+        UIEdgeInsets safe = self.owner.view.safeAreaInsets;
+        CGFloat width = MAX(1, self.owner.view.bounds.size.width - safe.left - safe.right - 16);
         CGFloat height = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(width, 0)].height;
         CGSize size = CGSizeMake(width, height);
         if (!CGSizeEqualToSize(self.panel.preferredContentSize, size)) self.panel.preferredContentSize = size;
@@ -496,6 +506,7 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.disabled || !self.active || self.updating) return;
     self.updating = YES;
     @try {
+        self.openingPending = NO; // A user tap wins over an already queued first-appearance refresh.
         self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
         self.desiredSelection = self.selected;
         IDWritePreference(@"DesiredApp", IDRememberFilter ? self.desiredSelection : nil);
@@ -584,8 +595,8 @@ static BOOL IDSupplementaryReady(id owner) {
             [self.owner.view addSubview:view];
             [NSLayoutConstraint activateConstraints:@[
                 (self.overlayTop = [view.topAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.topAnchor constant:-112]),
-                [view.leadingAnchor constraintEqualToAnchor:self.owner.view.leadingAnchor constant:8],
-                [view.trailingAnchor constraintEqualToAnchor:self.owner.view.trailingAnchor constant:-8],
+                [view.leadingAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.leadingAnchor constant:8],
+                [view.trailingAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.trailingAnchor constant:-8],
                 (self.overlayHeight = [view.heightAnchor constraintEqualToConstant:112])
             ]];
             [self.panel didMoveToParentViewController:self.owner];
