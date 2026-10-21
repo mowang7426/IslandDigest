@@ -69,7 +69,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
             assert icon[:8] == b'\x89PNG\r\n\x1a\n'
             assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
             assert len(icon) > 1000, icon_path
-    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3"):
+    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4"):
         for key in (b"ContainedMode", b"HideNativeList", b"containedEnabled", b"hideNativeRequested",
                     b"nativeHideSupported", b"nativeHidden", b"nativeHideReason", b"previewPolicyReason",
                     b"cardsRendered", b"cardsRedacted"):
@@ -78,7 +78,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert b"AllowPreviewWhenUnlocked" in binary
         assert "Author: MoWang" in metadata
         assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
-    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3"):
+    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4"):
         for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
             assert key in binary and key in prefs_binary, ("missing layout contract", key)
         for selector in (b"cardsReadyForNativeHide", b"setContentInsetAdjustmentBehavior:", b"builtCardCount"):
