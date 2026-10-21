@@ -43,7 +43,13 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         prefs_path = prefs_base + "IslandDigestPrefs"
         info_path = prefs_base + "Info.plist"
         entry_path = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.plist"
-        required = {tweak_path, filter_path, prefs_path, info_path, entry_path}
+        entry_icon = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.png"
+        icon_master = prefs_base + "IslandDigest-icon.png"
+        icon_2x = prefs_base + "IslandDigest-icon@2x.png"
+        icon_3x = prefs_base + "IslandDigest-icon@3x.png"
+        icon_bundle = prefs_base + "IslandDigest.png"
+        required = {tweak_path, filter_path, prefs_path, info_path, entry_path, entry_icon,
+                    icon_master, icon_2x, icon_3x, icon_bundle}
         assert required <= paths.keys(), paths.keys()
         assert all(path in required or (path.startswith(prefs_base) and
                    path.endswith(("_CodeSignature/CodeResources",))) for path in paths), paths.keys()
@@ -58,6 +64,25 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
+        for icon_path, size in ((entry_icon, 1024), (icon_master, 1024), (icon_2x, 120), (icon_3x, 180), (icon_bundle, 1024)):
+            icon = payload.extractfile(paths[icon_path]).read()
+            assert icon[:8] == b'\x89PNG\r\n\x1a\n'
+            assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
+            assert len(icon) > 1000, icon_path
+    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3"):
+        for key in (b"ContainedMode", b"HideNativeList", b"containedEnabled", b"hideNativeRequested",
+                    b"nativeHideSupported", b"nativeHidden", b"nativeHideReason", b"previewPolicyReason",
+                    b"cardsRendered", b"cardsRedacted"):
+            assert key in binary and key in prefs_binary, ("missing contained contract", key)
+        assert b"contentPreviewSetting" in binary
+        assert b"AllowPreviewWhenUnlocked" in binary
+        assert "Author: MoWang" in metadata
+        assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
+    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3"):
+        for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
+            assert key in binary and key in prefs_binary, ("missing layout contract", key)
+        for selector in (b"cardsReadyForNativeHide", b"setContentInsetAdjustmentBehavior:", b"builtCardCount"):
+            assert selector in binary, ("missing readiness contract", selector)
     check_binary(binary, expected_install_name, scheme, "tweak")
     # Theos bundle.mk deliberately emits MH_DYLIB with its full bundle executable
     # install name (unlike tweak.mk's @loader_path/@rpath identity).

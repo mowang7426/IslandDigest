@@ -38,7 +38,17 @@ jobs:
           xcodebuild -version
 
       - name: Check source contracts
-        run: python3 tests/check_source.py
+        run: |
+          python3 tests/check_source.py
+          python3 tests/check_contained.py
+          cc -Wall -Wextra -Werror tests/Contained.c -o /tmp/id-contained-tests
+          /tmp/id-contained-tests
+          cc -Wall -Wextra -Werror tests/Layout.c -lm -o /tmp/id-layout-tests
+          /tmp/id-layout-tests
+          cc -Wall -Wextra -Werror tests/Experience.c -o /tmp/id-experience-tests
+          /tmp/id-experience-tests
+          cc -Wall -Wextra -Werror tests/Clear.c -o /tmp/id-clear-tests
+          /tmp/id-clear-tests
 
       - name: Build package
         run: make package FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
@@ -51,7 +61,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.1.5', '${{ matrix.scheme }}'], check=True)
+                          '0.2.3', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

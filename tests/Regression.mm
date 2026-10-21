@@ -238,7 +238,7 @@ extern "C" int IDRunRegression(void) {
             IDDigestView *view = [[IDDigestView alloc] initWithFrame:CGRectMake(0, 0, 350, 112)];
             [view showGroups:state.groups selected:nil];
             [view layoutIfNeeded];
-            IDCheck(view.stack.arrangedSubviews.count == 3 && view.scroll.contentSize.width > 0,
+            IDCheck(view.stack.subviews.count == 3 && view.scroll.contentSize.width > 0,
                 "real UIKit digest creates and lays out all application buttons");
             return 0;
         } @catch (NSException *exception) {

@@ -8,8 +8,8 @@ prefs = (root / 'prefs/IDPrefs.m').read_text()
 for key in ('Enabled', 'Grouping', 'ShowCounts'):
     assert f'@"{key}"' in tweak and f'@"{key}"' in prefs
 assert 'kCFPreferencesCurrentUser, kCFPreferencesAnyHost' in shared
-assert 'kCFPreferencesCurrentUser, kCFPreferencesAnyHost' in prefs
-assert 'com.local.islanddigest/changed' in tweak and 'com.local.islanddigest/changed' in prefs
+assert 'IDWritePreference' in prefs and 'IDNotifyPreferencesChanged' in prefs
+assert 'com.local.islanddigest/changed' in tweak and 'com.local.islanddigest/changed' in shared
 assert 'com.local.islanddigest/retry' in tweak and 'com.local.islanddigest/retry' in prefs
 assert 'viewDidLayoutSubviews' in tweak and 'IDEnsureState(self)' in tweak
 assert 'allNotificationRequests' in tweak and 'filteredNotificationRequests' in tweak
@@ -21,7 +21,69 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.1.5'
+assert info['CFBundleVersion'] == '0.2.3'
+ui_contained = (root / 'IDContainedUI.inc').read_text()
+assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in ui_contained
+assert 'shell.userInteractionEnabled = YES' in ui_contained
+assert '打开诊断：点击已收到' in tweak
+assert 'NCNotificationMasterList' in tweak and 'IDRead(self.owner, "masterList")' in tweak
+assert 'method_getNumberOfArguments(executeMethod) == 8' in tweak
+assert 'strcmp(method_getTypeEncoding(executeMethod), "v@:@@@B@@") == 0' in tweak
+assert 'UIApplication.sharedApplication.openURL' not in tweak and 'openURL:' not in tweak
+assert 'requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:' in tweak
+assert 'void (^completion)(void)' in tweak
+assert 'NCNotificationViewController alloc' not in tweak
+assert 'AllowPreviewWhenUnlocked' in tweak and 'AllowPreviewWhenUnlocked' in prefs
+assert 'MoWang' in prefs
+assert 'contentPreviewSetting' in (root / 'IDContainedSupport.inc').read_text()
 assert 'preferenceloader' in (root/'control').read_text()
 assert plistlib.loads((root/'IslandDigest.plist').read_bytes())['Filter']['Bundles'] == ['com.apple.springboard']
-print('PASS 0.1.5 portable source/config contracts (not runtime validation)')
+print('PASS 0.1.9 portable source/config contracts (not runtime validation)')
+
+ui = (root / 'IDDigestUI.inc').read_text()
+for key in ('PinnedApps', 'SortMode', 'LayoutMode', 'CategoryStyle', 'RememberFilter'):
+    assert f'@"{key}"' in prefs or f'@"{key}"' in shared
+assert 'IDExperienceOrder' in tweak and 'IDExperienceVisibleRows' in ui
+assert 'desiredSelection' in tweak and 'openingPending' in tweak and 'dismissed' in tweak
+assert '[state endAppearance]' in tweak and '[state beginAppearance]' in tweak
+assert 'hold.cancelsTouchesInView = YES' in ui
+assert 'cancelTrackingWithEvent:nil' in ui and 'accessibilityCustomActions' in ui
+assert 'geometryUpdating' in tweak and 'CGSizeEqualToSize' in tweak
+assert 'additionalSafeAreaInsets =' not in tweak, 'Own overlays must never change the system owner safe area'
+assert 'window.safeAreaInsets' in tweak and 'CGRectIntersection(owner.bounds, safe)' in tweak
+assert 'IDLayoutPanel' in tweak and 'UIKit-window-bounded' in tweak
+assert 'self.renderedRevision != IDOptionsRevision' in tweak
+assert 'previous.latest' in tweak and 'previous.hasCriticalAlert' in tweak
+assert 'IDMiniControls = [IDStringOption(@"CategoryStyle"' in tweak
+assert 'MAX(44' in ui
+print('PASS experience source contracts (not runtime validation)')
+
+clear = (root / 'IDClearCoordinator.inc').read_text()
+support = (root / 'IDClearSupport.inc').read_text()
+logic = (root / 'IDClearLogic.h').read_text()
+assert '#include "IDClearCoordinator.inc"' in tweak
+assert '#include "IDClearSupport.inc"' in tweak
+assert '#import "IDClearLogic.h"' in tweak
+assert 'IDClearEligible(' in clear and 'IDClearConfirm(' in clear and 'IDClearSnapshotMember(' in clear
+assert 'notificationStructuredListViewController:requestsClearingNotificationRequests:' in support
+for forbidden in ('requestsClearingNotificationRequestsInSections:', 'RequestsClearingAll:', 'clearAllNotification', 'sqlite', 'BBServer'):
+    assert forbidden not in clear + support
+assert clear.count('sel_registerName(IDClearSelector), self.owner, send.copy') == 1
+assert 'self.clearSnapshot = tickets.copy' in clear
+confirm = clear.split('- (void)confirmClear:')[1]
+assert 'for (NSDictionary *ticket in self.clearSnapshot)' in confirm
+assert 'request == original' in confirm and 'matchingKeys == 1' in confirm
+assert 'self.clearMaster == IDRead' in confirm and 'self.clearDelegate == delegate' in confirm
+assert 'self.clearRevision == IDOptionsRevision' in confirm and 'scopeMatches' in confirm
+assert 'clearWindow' in confirm and 'presentation' in confirm
+assert 'IDClearBool(request, "isCriticalAlert"' in clear
+assert 'hideClearActionInList' in clear and 'lockScreenPersistence' in clear and '"clearAction"' in clear
+assert 'isAuthenticated' in clear and 'CSCoverSheetViewController' in clear
+assert 'attempt < 2' in clear and 'dispatch_after' in clear and 'while (' not in clear
+assert 'UIAlertActionStyleDestructive' in clear and 'UIAlertActionStyleCancel' in clear
+assert 'clearAvailable' in prefs and 'clearReason' in prefs
+assert '始终确认' in prefs and 'EnableClearing' in prefs
+assert 'IslandDigestClear' in ui and 'clearButton.enabled = NO' in ui
+assert 'IDClearCancel(&_clearGate)' in clear and '[state cancelClear]' in tweak
+assert '#include "../IDClearLogic.h"' in (root/'tests/Clear.c').read_text()
+print('PASS clear source guardrails (not native behavior validation)')

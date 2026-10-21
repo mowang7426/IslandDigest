@@ -7,13 +7,24 @@
 #include <time.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <math.h>
 #import "IDShared.h"
+#import "IDExperienceLogic.h"
+#import "IDClearLogic.h"
+#import "IDContainedLogic.h"
+#import "IDLayoutLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
+static BOOL IDPreviewWhenUnlocked = NO;
+static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
+static BOOL IDContainedMode = YES, IDHideNative = NO;
+static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
+static NSInteger IDSortMode;
+static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.1.5";
+    IDDiagnostics[@"version"] = @"0.2.3";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -26,9 +37,25 @@ static void IDLoadOptions(void) {
     IDEnabled = IDPref(@"Enabled", YES);
     IDGrouping = IDPref(@"Grouping", YES);
     IDShowCounts = IDPref(@"ShowCounts", YES);
+    IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", NO);
+    IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
+    IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
+    IDRememberFilter = IDPref(@"RememberFilter", NO);
+    IDContainedMode = IDPref(@"ContainedMode", YES);
+    IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
+    IDSortMode = [@[@"recent", @"count", @"name"] indexOfObject:IDStringOption(@"SortMode", @[@"recent", @"count", @"name"], @"recent")];
+    IDPanelTopOffset = IDNumberOption(@"PanelTopOffset", 220, 0, 420);
+    IDPanelSideInset = IDNumberOption(@"PanelSideInset", 8, 8, 64);
+    IDPanelMaxHeight = IDNumberOption(@"PanelMaxHeight", 360, 240, 600);
+    IDOptionsRevision++;
 }
 
 @interface NCNotificationStructuredListViewController : UIViewController
+@end
+
+@interface NCNotificationViewController : UIViewController
+- (instancetype)_initWithNotificationRequest:(id)request revealingAdditionalContentOnPresentation:(BOOL)reveal;
+- (void)_executeDefaultAction:(BOOL)animated;
 @end
 
 @interface NCNotificationListSupplementaryViewConfiguration : NSObject
@@ -80,7 +107,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-    return "/var/mobile/Library/Preferences/IslandDigest-0.1.5.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.3.startup-pending";
 #endif
 }
 
@@ -120,15 +147,23 @@ static NSArray *IDItems(id object) {
     return @[];
 }
 
-static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
-    if (!object || depth > 8) return;
+static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
+    if (!object) return YES;
+    if (depth > 8 || requests.count >= 4096) return NO;
     if (IDMethod(object_getClass(object), "sectionIdentifier", "@", 2)) {
         [requests addObject:object];
-        return;
+        return YES;
     }
+    BOOL collection = [object isKindOfClass:NSDictionary.class] || [object isKindOfClass:NSArray.class]
+        || [object isKindOfClass:NSSet.class] || [object isKindOfClass:NSOrderedSet.class];
+    if (!collection) return NO;
     NSArray *items = [object isKindOfClass:NSDictionary.class] ? [object allValues] : IDItems(object);
-    for (id item in items) IDCollectRequests(item, requests, depth + 1);
+    for (id item in items) if (!IDCollectRequests(item, requests, depth + 1)) return NO;
+    return YES;
 }
+
+#include "IDClearSupport.inc"
+#include "IDContainedSupport.inc"
 
 @interface IDGroup : NSObject
 @property(nonatomic, copy) NSString *identifier;
@@ -147,8 +182,18 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UIVisualEffectView *glass;
 @property(nonatomic, strong) UILabel *heading;
 @property(nonatomic, strong) UILabel *detail;
+@property(nonatomic, strong) UILabel *hint;
+@property(nonatomic, strong) UIButton *clearButton;
 @property(nonatomic, strong) UIScrollView *scroll;
-@property(nonatomic, strong) UIStackView *stack;
+@property(nonatomic, strong) UIView *stack;
+@property(nonatomic, strong) UIScrollView *cardScroll;
+@property(nonatomic, strong) UIStackView *cardStack;
+@property(nonatomic, strong) UILabel *cardNotice;
+@property(nonatomic) NSUInteger builtCardCount;
+- (BOOL)cardsReadyForNativeHide;
+- (void)showCards;
+- (void)dropCards;
+- (CGFloat)categoryHeightForWidth:(CGFloat)width;
 @property(nonatomic, weak) IDCoordinator *coordinator;
 - (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected;
 @end
@@ -163,11 +208,30 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) id container;
 @property(nonatomic, strong) id configuration;
 @property(nonatomic, copy) NSArray<IDGroup *> *groups;
+@property(nonatomic, copy) NSArray<NSDictionary *> *cards;
+@property(nonatomic, copy) NSArray<NSDictionary *> *renderedCards;
+@property(nonatomic) BOOL enumerationReliable;
+@property(nonatomic, weak) UIView *hiddenNativeList;
+@property(nonatomic) BOOL nativeWasHidden;
+@property(nonatomic, strong) NSObject *nativeHideToken;
+@property(nonatomic, copy) NSString *nativeHideReason;
+- (void)restoreNativeList;
+- (void)updateNativeListVisibility;
+- (void)dropContainedContent;
+- (BOOL)openCardRequest:(id)request;
 @property(nonatomic, copy) NSString *selected;
 @property(nonatomic, copy) NSString *renderedSelection;
+@property(nonatomic, copy) NSString *desiredSelection;
+@property(nonatomic) BOOL openingPending;
+@property(nonatomic) BOOL dismissed;
+@property(nonatomic) NSUInteger renderedRevision;
+@property(nonatomic, strong) NSLayoutConstraint *overlayHeight;
+@property(nonatomic, strong) NSLayoutConstraint *overlayTop;
+@property(nonatomic, strong) NSLayoutConstraint *overlayLeft;
+@property(nonatomic, strong) NSLayoutConstraint *overlayWidth;
+@property(nonatomic) BOOL geometryUpdating;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
 @property(nonatomic) BOOL overlay;
-@property(nonatomic) UIEdgeInsets savedInsets;
 @property(nonatomic) BOOL inserted;
 @property(nonatomic) BOOL updating;
 @property(nonatomic) BOOL applyingFilter;
@@ -175,7 +239,29 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic) BOOL active;
 @property(nonatomic) BOOL disabled;
 @property(nonatomic) NSUInteger recoveryAttempts;
+@property(nonatomic) IDClearGate clearGate;
+@property(nonatomic, copy) NSArray *clearSnapshot;
+@property(nonatomic, copy) NSString *clearScope;
+@property(nonatomic, strong) id clearDelegate;
+@property(nonatomic, strong) UIAlertController *clearAlert;
+@property(nonatomic, weak) UIViewController *clearPresenterOwner;
+@property(nonatomic, weak) UIWindow *clearWindow;
+@property(nonatomic, strong) id clearMaster;
+@property(nonatomic, copy) NSString *clearMessage;
+@property(nonatomic, strong) id pendingActionRequest;
+@property(nonatomic, strong) id pendingAction;
+
+@property(nonatomic) NSUInteger clearRevision;
+- (void)beginClear;
+- (void)cancelClear;
+- (void)updateClearButton;
+- (void)confirmClear:(unsigned long)generation;
+- (void)observeClear:(NSArray *)sent generation:(unsigned long)generation attempt:(NSUInteger)attempt;
 - (void)refresh;
+- (void)updatePanelGeometry;
+- (void)beginAppearance;
+- (void)endAppearance;
+- (void)togglePinnedIdentifier:(NSString *)identifier;
 - (void)selectIdentifier:(NSString *)identifier;
 - (void)resetFilter;
 - (void)disable;
@@ -183,6 +269,7 @@ static void IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @end
 
 static char IDCoordinatorKey;
+static char IDNativeHideOwnerKey;
 static NSHashTable *IDOwners;
 static BOOL IDRefreshPending;
 static BOOL IDFilteringReady;
@@ -220,142 +307,14 @@ static void IDScheduleRefresh(void) {
     });
 }
 
-@implementation IDDigestView
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (!self) return nil;
-    self.layer.cornerRadius = 24;
-    self.layer.cornerCurve = kCACornerCurveContinuous;
-    self.clipsToBounds = YES;
-    self.glass = [[UIVisualEffectView alloc] initWithEffect:
-        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial]];
-    self.glass.userInteractionEnabled = NO;
-    [self addSubview:self.glass];
-    self.heading = [UILabel new];
-    self.heading.text = IDText("按应用分组");
-    self.heading.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    self.heading.textColor = UIColor.labelColor;
-    self.heading.adjustsFontForContentSizeCategory = YES;
-    [self addSubview:self.heading];
-    self.detail = [UILabel new];
-    self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
-    self.detail.textColor = UIColor.secondaryLabelColor;
-    self.detail.textAlignment = NSTextAlignmentRight;
-    self.detail.adjustsFontSizeToFitWidth = YES;
-    [self addSubview:self.detail];
-    self.scroll = [UIScrollView new];
-    self.scroll.showsHorizontalScrollIndicator = NO;
-    self.scroll.alwaysBounceHorizontal = YES;
-    [self addSubview:self.scroll];
-    self.stack = [[UIStackView alloc] initWithFrame:CGRectZero];
-    self.stack.axis = UILayoutConstraintAxisHorizontal;
-    self.stack.spacing = 8;
-    self.stack.alignment = UIStackViewAlignmentFill;
-    [self.scroll addSubview:self.stack];
-    self.accessibilityIdentifier = IDText("IslandDigest");
-    return self;
+static void IDRedactContainedNow(void) {
+    void (^redact)(void) = ^{
+        for (id owner in IDOwners.allObjects) [IDState(owner) dropContainedContent];
+    };
+    if (NSThread.isMainThread) redact(); else dispatch_async(dispatch_get_main_queue(), redact);
 }
 
-- (CGSize)sizeThatFits:(CGSize)size {
-    return CGSizeMake(size.width, 112);
-}
-
-- (CGSize)intrinsicContentSize {
-    return CGSizeMake(UIViewNoIntrinsicMetric, 112);
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGFloat width = CGRectGetWidth(self.bounds);
-    self.glass.frame = self.bounds;
-    self.heading.frame = CGRectMake(16, 12, width * 0.45, 22);
-    self.detail.frame = CGRectMake(width * 0.5, 15, width * 0.5 - 16, 18);
-    self.scroll.frame = CGRectMake(0, 44, width, 56);
-    CGSize fitting = [self.stack systemLayoutSizeFittingSize:
-        CGSizeMake(UILayoutFittingCompressedSize.width, 52)
-        withHorizontalFittingPriority:UILayoutPriorityFittingSizeLevel
-        verticalFittingPriority:UILayoutPriorityRequired];
-    self.stack.frame = CGRectMake(14, 0, fitting.width, 52);
-    self.scroll.contentSize = CGSizeMake(fitting.width + 28, 56);
-}
-
-- (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected {
-    CGPoint offset = self.scroll.contentOffset;
-    for (UIView *view in self.stack.arrangedSubviews.copy) {
-        [self.stack removeArrangedSubview:view];
-        [view removeFromSuperview];
-    }
-    NSUInteger total = 0;
-    for (IDGroup *group in groups) total += group.count;
-    self.detail.text = IDShowCounts ? [NSString stringWithFormat:IDText("%lu 个应用 · %lu 条"),
-        (unsigned long)groups.count, (unsigned long)total] : IDText("保留原生通知操作");
-    NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];
-    [entries addObjectsFromArray:groups];
-    for (id entry in entries) {
-        IDGroup *group = entry == NSNull.null ? nil : entry;
-        BOOL active = group ? [selected isEqualToString:group.identifier] : !selected;
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.layer.cornerRadius = 17;
-        button.layer.cornerCurve = kCACornerCurveContinuous;
-        button.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9]
-            : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
-        UIColor *foreground = active ? UIColor.systemBackgroundColor : UIColor.labelColor;
-        UIStackView *content = [UIStackView new];
-        content.axis = UILayoutConstraintAxisHorizontal;
-        content.alignment = UIStackViewAlignmentCenter;
-        content.spacing = 7;
-        content.userInteractionEnabled = NO;
-        content.translatesAutoresizingMaskIntoConstraints = NO;
-        [button addSubview:content];
-        UIImageView *icon = [[UIImageView alloc] initWithImage:
-            group.icon ?: [UIImage systemImageNamed:IDText(group ? "app.fill" : "square.stack.3d.up.fill")]];
-        icon.tintColor = foreground;
-        icon.contentMode = UIViewContentModeScaleAspectFit;
-        icon.layer.cornerRadius = 7;
-        icon.clipsToBounds = YES;
-        [content addArrangedSubview:icon];
-        [icon.widthAnchor constraintEqualToConstant:26].active = YES;
-        [icon.heightAnchor constraintEqualToConstant:26].active = YES;
-        UILabel *name = [UILabel new];
-        name.text = group ? group.name : IDText("全部");
-        name.textColor = foreground;
-        name.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
-        name.lineBreakMode = NSLineBreakByTruncatingTail;
-        [name.widthAnchor constraintLessThanOrEqualToConstant:80].active = YES;
-        [content addArrangedSubview:name];
-        UILabel *badge = [UILabel new];
-        NSUInteger count = group ? group.count : total;
-        badge.text = count > 99 ? IDText("99+") : [NSString stringWithFormat:IDText("%lu"), (unsigned long)count];
-        badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold];
-        badge.textColor = foreground;
-        badge.alpha = 0.75;
-        badge.hidden = !IDShowCounts;
-        [content addArrangedSubview:badge];
-        button.enabled = !group || (IDFilteringReady && IDGrouping);
-        [NSLayoutConstraint activateConstraints:@[
-            [content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:11],
-            [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-11],
-            [content.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
-            [content.topAnchor constraintGreaterThanOrEqualToAnchor:button.topAnchor constant:8],
-            [content.bottomAnchor constraintLessThanOrEqualToAnchor:button.bottomAnchor constant:-8]
-        ]];
-        button.accessibilityLabel = [NSString stringWithFormat:IDText("%@，%lu 条通知"),
-            group ? group.name : IDText("全部"), (unsigned long)count];
-        button.accessibilityTraits = UIAccessibilityTraitButton | (active ? UIAccessibilityTraitSelected : 0);
-        __weak IDCoordinator *coordinator = self.coordinator;
-        NSString *identifier = group.identifier;
-        [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-            [coordinator selectIdentifier:identifier];
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [self.stack addArrangedSubview:button];
-    }
-    [self setNeedsLayout];
-    [self layoutIfNeeded];
-    CGFloat maxOffset = MAX(0, self.scroll.contentSize.width - self.scroll.bounds.size.width);
-    self.scroll.contentOffset = CGPointMake(MIN(MAX(0, offset.x), maxOffset), 0);
-}
-@end
+#include "IDDigestUI.inc"
 
 @implementation IDDigestController
 - (void)loadView {
@@ -390,6 +349,24 @@ static BOOL IDSupplementaryReady(id owner) {
     return self;
 }
 
+#include "IDClearCoordinator.inc"
+#include "IDContainedCoordinator.inc"
+
+- (void)dealloc {
+    UIView *native = _hiddenNativeList;
+    BOOL original = _nativeWasHidden;
+    NSObject *token = _nativeHideToken;
+    // A delayed dealloc must not restore a view already claimed by another owner.
+    void (^restore)(void) = ^{
+        if (native && token && objc_getAssociatedObject(native, &IDNativeHideOwnerKey) == token) {
+            native.hidden = original;
+            objc_setAssociatedObject(native, &IDNativeHideOwnerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    };
+    if (NSThread.isMainThread) restore();
+    else if (native) dispatch_async(dispatch_get_main_queue(), restore);
+}
+
 - (NSArray<IDGroup *> *)snapshot {
     id master = IDRead(self.owner, "masterList");
     if (!master) master = IDRead(self.owner, "notificationMasterList");
@@ -397,14 +374,22 @@ static BOOL IDSupplementaryReady(id owner) {
     if (!sectionObjects) sectionObjects = IDRead(master, "sectionLists");
     NSArray *sections = IDItems(sectionObjects);
     NSMutableSet *requests = [NSMutableSet new];
-    IDCollectRequests(IDRead(master, "allNotificationRequests"), requests, 0);
+    id allRequests = IDRead(master, "allNotificationRequests");
+    BOOL reliable = master && IDCollection(allRequests);
+    BOOL sectionsReliable = master && IDCollection(sectionObjects);
+    reliable = IDCollectRequests(allRequests, requests, 0) && reliable;
     IDDiagnostics[@"masterSeen"] = @(master != nil);
     IDDiagnostics[@"sections"] = @(sections.count);
     IDDiagnostics[@"enumerationSupported"] = @(sectionObjects != nil || IDMethod(object_getClass(master), "allNotificationRequests", "@", 2));
     for (id section in sections) {
-        IDCollectRequests(IDRead(section, "allNotificationRequests"), requests, 0);
-        IDCollectRequests(IDRead(section, "filteredNotificationRequests"), requests, 0);
+        id sectionRequests = IDRead(section, "allNotificationRequests");
+        id filteredRequests = IDRead(section, "filteredNotificationRequests");
+        if (!IDCollection(sectionRequests) || (self.filtered.count && !IDCollection(filteredRequests))) sectionsReliable = NO;
+        sectionsReliable = IDCollectRequests(sectionRequests, requests, 0) && sectionsReliable;
+        sectionsReliable = IDCollectRequests(filteredRequests, requests, 0) && sectionsReliable;
     }
+    self.enumerationReliable = reliable || sectionsReliable;
+    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected, self.owner) : @[];
     NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
     for (id request in requests) {
         NSString *identifier = IDRead(request, "sectionIdentifier");
@@ -418,7 +403,16 @@ static BOOL IDSupplementaryReady(id owner) {
                 && IDArgument(object_getClass(self.owner), "_sectionSettingsForSectionIdentifier:", 2, "@")
                 ? ((id (*)(id, SEL, id))objc_msgSend)(self.owner, settingsSelector, identifier) : nil;
             NSString *name = IDRead(settings, "displayName");
-            group.name = [name isKindOfClass:NSString.class] && name.length ? name : identifier;
+            if (![name isKindOfClass:NSString.class] || !name.length) {
+                Class proxyClass = objc_getClass("LSApplicationProxy");
+                const char *lookup = "applicationProxyForIdentifier:";
+                if (IDMethod(object_getClass(proxyClass), lookup, "@", 3)
+                    && IDArgument(object_getClass(proxyClass), lookup, 2, "@")) {
+                    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, sel_registerName(lookup), identifier);
+                    name = IDRead(proxy, "localizedName");
+                }
+            }
+            group.name = [name isKindOfClass:NSString.class] && name.length ? name : @"未命名应用";
             id icon = IDRead(settings, "settingsIcon");
             if (![icon isKindOfClass:UIImage.class]) icon = IDRead(IDRead(request, "content"), "icon");
             if ([icon isKindOfClass:UIImage.class]) group.icon = icon;
@@ -435,9 +429,24 @@ static BOOL IDSupplementaryReady(id owner) {
             group.latest = date;
         }
     }
+    // Export only bounded local app names for Settings; never diagnostic or notification text.
+    NSMutableDictionary *names = [NSMutableDictionary new];
+    id storedNames = IDPreferenceValue(@"AppNames");
+    NSSet *pins = [NSSet setWithArray:IDPinnedIdentifiers()];
+    if ([storedNames isKindOfClass:NSDictionary.class]) for (NSString *identifier in pins)
+        if ([storedNames[identifier] isKindOfClass:NSString.class]) names[identifier] = storedNames[identifier];
+    NSMutableArray *observed = [NSMutableArray new];
+    for (NSString *identifier in [groups.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+        if (observed.count >= 128) break;
+        names[identifier] = groups[identifier].name;
+        [observed addObject:identifier];
+    }
+    if (![storedNames isEqual:names]) IDWritePreference(@"AppNames", names);
+    if (![IDPreferenceValue(@"ObservedApps") isEqual:observed]) IDWritePreference(@"ObservedApps", observed);
     return [groups.allValues sortedArrayUsingComparator:^NSComparisonResult(IDGroup *first, IDGroup *second) {
-        NSComparisonResult result = [second.latest compare:first.latest];
-        return result == NSOrderedSame ? [first.identifier compare:second.identifier] : result;
+        return (NSComparisonResult)IDExperienceOrder([pins containsObject:first.identifier], [pins containsObject:second.identifier],
+            (int)IDSortMode, first.count, second.count, first.latest.timeIntervalSince1970, second.latest.timeIntervalSince1970,
+            (int)[first.name localizedStandardCompare:second.name], (int)[first.identifier compare:second.identifier]);
     }];
 }
 
@@ -454,7 +463,7 @@ static BOOL IDSupplementaryReady(id owner) {
             self.filterReconcilePending = NO;
             NSMutableSet *excluded = [NSMutableSet new];
             for (IDGroup *group in self.groups) {
-                if (self.selected && !group.hasCriticalAlert && ![group.identifier isEqualToString:self.selected]) {
+                if (!IDContainedMode && self.selected && !group.hasCriticalAlert && ![group.identifier isEqualToString:self.selected]) {
                     [excluded addObject:group.identifier];
                 }
             }
@@ -485,8 +494,84 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)render {
     if (!self.panel.isViewLoaded) return;
+    // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
+    [(IDDigestView *)self.panel.view showCards];
+    self.renderedCards = self.cards;
     self.renderedSelection = self.selected;
+    self.renderedRevision = IDOptionsRevision;
+    [self updatePanelGeometry];
+    [self.owner.view layoutIfNeeded];
+    [self.panel.view layoutIfNeeded];
+    [self updateNativeListVisibility];
+    [self updateClearButton];
+}
+
+- (void)updatePanelGeometry {
+    if (self.geometryUpdating || !self.panel.isViewLoaded) return;
+    self.geometryUpdating = YES;
+    @try {
+        UIView *owner = self.owner.view;
+        UIWindow *window = owner.window;
+        // Window safe bounds are independent of the notification owner's additional
+        // insets. Intersect after conversion: owner may not fill the window.
+        CGRect safe = window ? UIEdgeInsetsInsetRect(window.bounds, window.safeAreaInsets)
+                             : UIEdgeInsetsInsetRect(owner.bounds, owner.safeAreaInsets);
+        if (window) safe = [owner convertRect:safe fromView:window];
+        safe = CGRectIntersection(owner.bounds, safe);
+        if (CGRectIsNull(safe) || CGRectIsEmpty(safe)) safe = CGRectZero;
+        IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
+            CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
+            IDPanelMaxHeight, IDPanelMaxHeight);
+        CGFloat preferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
+        IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
+            CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
+            preferred, IDPanelMaxHeight);
+        CGSize size = CGSizeMake(rect.width, rect.height);
+        if (!CGSizeEqualToSize(self.panel.preferredContentSize, size)) self.panel.preferredContentSize = size;
+        if (self.overlay) {
+            if (fabs(self.overlayHeight.constant-rect.height)>0.5) self.overlayHeight.constant=rect.height;
+            if (fabs(self.overlayTop.constant-rect.y)>0.5) self.overlayTop.constant=rect.y;
+            if (fabs(self.overlayLeft.constant-rect.x)>0.5) self.overlayLeft.constant=rect.x;
+            if (fabs(self.overlayWidth.constant-rect.width)>0.5) self.overlayWidth.constant=rect.width;
+        }
+    } @finally { self.geometryUpdating = NO; }
+}
+
+- (void)beginAppearance {
+    if (self.active) return;
+    self.dismissed = NO;
+    self.active = YES;
+    self.openingPending = YES;
+    id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
+    self.desiredSelection = [desired isKindOfClass:NSString.class] && [desired length] ? desired : nil;
+}
+
+- (void)endAppearance {
+    [self dropContainedContent];
+    [self cancelClear];
+    self.active = NO;
+    self.dismissed = YES;
+    self.openingPending = NO;
+    self.selected = nil; // actual native state must always be restored on disappearance.
+    if (!IDRememberFilter) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
+    [self resetFilter];
+}
+
+- (void)togglePinnedIdentifier:(NSString *)identifier {
+    if (!identifier.length || !self.active || self.disabled || self.updating) return;
+    NSMutableArray *pins = IDPinnedIdentifiers().mutableCopy;
+    BOOL pinned = [pins containsObject:identifier];
+    if (pinned) [pins removeObject:identifier]; else if (pins.count < 128) [pins addObject:identifier]; else return;
+    IDWritePreference(@"PinnedApps", pins);
+    id savedNames = IDPreferenceValue(@"AppNames");
+    NSMutableDictionary *names = [savedNames isKindOfClass:NSDictionary.class] ? [savedNames mutableCopy] : [NSMutableDictionary new];
+    for (IDGroup *group in self.groups) if ([group.identifier isEqualToString:identifier]) names[identifier] = group.name;
+    IDWritePreference(@"AppNames", names);
+    IDOptionsRevision++;
+    [self refresh];
+    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, pinned ? @"已取消置顶" : @"已置顶应用");
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
 }
 
 - (void)resetFilter {
@@ -503,6 +588,8 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)recover {
+    [self dropContainedContent];
+    [self cancelClear];
     if (self.recoveryAttempts >= 3) return;
     self.recoveryAttempts += 1;
     self.selected = nil;
@@ -511,7 +598,6 @@ static BOOL IDSupplementaryReady(id owner) {
         [self.panel willMoveToParentViewController:nil];
         [self.panel.view removeFromSuperview];
         [self.panel removeFromParentViewController];
-        self.owner.additionalSafeAreaInsets = self.savedInsets;
         self.inserted = NO;
         self.overlay = NO;
     }
@@ -527,6 +613,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)disable {
+    [self cancelClear];
     self.disabled = YES;
     self.selected = nil;
     if (self.panel.isViewLoaded) {
@@ -541,9 +628,14 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)selectIdentifier:(NSString *)identifier {
     if (self.disabled || !self.active || self.updating) return;
+    [self cancelClear]; self.clearMessage = nil;
     self.updating = YES;
     @try {
+        self.openingPending = NO; // A user tap wins over an already queued first-appearance refresh.
         self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
+        if (IDContainedMode) self.groups = [self snapshot];
+        self.desiredSelection = self.selected;
+        IDWritePreference(@"DesiredApp", IDRememberFilter ? self.desiredSelection : nil);
         if (![self applyFilter]) {
             [self disable];
             return;
@@ -560,6 +652,11 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)refresh {
+    @try {
+        if (_clearGate.pending && (self.clearRevision != IDOptionsRevision || self.clearDelegate != IDRead(self.owner, "delegate")
+            || self.clearMaster != IDRead(self.owner, "masterList") || ![self clearAuthenticated])) [self cancelClear];
+    } @catch (NSException *exception) { [self cancelClear]; }
+    [self updateClearButton];
     if (!self.active || self.updating || !self.owner.isViewLoaded) return;
     if (!IDEnabled || !IDGrouping) {
         self.selected = nil;
@@ -574,7 +671,7 @@ static BOOL IDSupplementaryReady(id owner) {
     self.updating = YES;
     @try {
         NSArray<IDGroup *> *groups = [self snapshot];
-        BOOL unchanged = self.groups.count == groups.count;
+        BOOL unchanged = self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
         for (NSUInteger index = 0; index < groups.count; index++) {
             IDGroup *group = groups[index];
@@ -582,7 +679,9 @@ static BOOL IDSupplementaryReady(id owner) {
             if (unchanged) {
                 IDGroup *previous = self.groups[index];
                 unchanged = [previous.identifier isEqualToString:group.identifier]
-                    && previous.count == group.count && [previous.name isEqualToString:group.name];
+                    && previous.count == group.count && [previous.name isEqualToString:group.name]
+                    && [previous.latest isEqual:group.latest] && previous.icon == group.icon
+                    && previous.hasCriticalAlert == group.hasCriticalAlert;
             }
         }
         self.groups = groups;
@@ -592,43 +691,65 @@ static BOOL IDSupplementaryReady(id owner) {
         for (IDGroup *group in groups) requestCount += group.count;
         IDDiagnostics[@"requests"] = @(requestCount);
         IDDiagnostics[@"filterAvailable"] = @(IDFilteringReady);
-        if (!selectionExists) self.selected = nil;
+        if (self.openingPending) {
+            self.openingPending = NO;
+            self.selected = IDRememberFilter ? self.desiredSelection : nil;
+            if (IDContainedMode) self.groups = groups = [self snapshot];
+            selectionExists = self.selected == nil;
+            for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.selected]) selectionExists = YES;
+        }
+        BOOL desiredExists = self.desiredSelection == nil;
+        for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.desiredSelection]) desiredExists = YES;
+        if (!desiredExists) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
+        if (!selectionExists) {
+            [self cancelClear]; self.selected = nil;
+            if (IDContainedMode) self.groups = groups = [self snapshot];
+        }
         if (![self applyFilter]) {
             [self disable];
             return;
         }
-        if (groups.count == 0) {
+        if (groups.count == 0 && !IDContainedMode) {
             if (self.inserted) [self recover];
             BOOL supported = [IDDiagnostics[@"enumerationSupported"] boolValue];
             IDStatus(supported ? @"waiting-notifications" : @"enumeration-unavailable",
                 supported ? @"控制器已出现；目前未读到通知" : @"控制器已出现，但当前系统的通知枚举接口不可用");
             return;
         }
-        if (!self.container && !self.inserted && !IDSupplementaryReady(self.owner)) {
+        if (IDContainedMode && self.inserted && !self.overlay) {
+            [self recover];
+            if (self.inserted) return;
+            self.container = nil; self.configuration = nil; self.panel = nil;
+            // recover drops strings; refill only from the current native snapshot.
+            self.groups = groups = [self snapshot];
+        }
+        if (!self.container && !self.inserted && (IDContainedMode || !IDSupplementaryReady(self.owner))) {
             // Public UIKit fallback: no notification cells, requests or delegates replaced.
             self.panel = [IDDigestController new];
             self.panel.coordinator = self;
-            self.savedInsets = self.owner.additionalSafeAreaInsets;
-            UIEdgeInsets insets = self.savedInsets;
-            insets.top += 112;
-            self.owner.additionalSafeAreaInsets = insets;
             [self.owner addChildViewController:self.panel];
             UIView *view = self.panel.view;
             view.translatesAutoresizingMaskIntoConstraints = NO;
             [self.owner.view addSubview:view];
             [NSLayoutConstraint activateConstraints:@[
-                [view.topAnchor constraintEqualToAnchor:self.owner.view.safeAreaLayoutGuide.topAnchor constant:-112],
-                [view.leadingAnchor constraintEqualToAnchor:self.owner.view.leadingAnchor constant:8],
-                [view.trailingAnchor constraintEqualToAnchor:self.owner.view.trailingAnchor constant:-8],
-                [view.heightAnchor constraintEqualToConstant:112]
+                (self.overlayTop = [view.topAnchor constraintEqualToAnchor:self.owner.view.topAnchor constant:0]),
+                (self.overlayLeft = [view.leadingAnchor constraintEqualToAnchor:self.owner.view.leadingAnchor constant:8]),
+                (self.overlayWidth = [view.widthAnchor constraintEqualToConstant:1]),
+                (self.overlayHeight = [view.heightAnchor constraintEqualToConstant:112])
             ]];
             [self.panel didMoveToParentViewController:self.owner];
             self.overlay = YES;
             self.inserted = YES;
+            // The detached-view cache is not proof that this new view has cards.
+            [self render];
         }
         if (self.overlay) {
-            [self render];
-            IDDiagnostics[@"presentation"] = @"UIKit-safe-area";
+            IDDigestView *digest = (IDDigestView *)self.panel.view;
+            if ((IDContainedMode && digest.builtCardCount != self.cards.count) || !unchanged || self.renderedRevision != IDOptionsRevision || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) [self render];
+            [self updatePanelGeometry];
+            [self.owner.view layoutIfNeeded];
+            [self updateNativeListVisibility];
+            IDDiagnostics[@"presentation"] = @"UIKit-window-bounded";
             IDStatus(@"panel-visible", IDFilteringReady ? @"应用分组面板已加入可见控制器" : @"分组面板可见；原生筛选接口不兼容，应用按钮停用");
             return;
         }
@@ -669,7 +790,9 @@ static BOOL IDSupplementaryReady(id owner) {
             IDDiagnostics[@"presentation"] = @"native-supplementary";
             IDStatus(@"panel-visible", IDFilteringReady ? @"原生通知分组面板已插入" : @"面板已插入；筛选接口不可用，应用按钮停用");
             self.renderedSelection = self.selected;
-        } else if (!unchanged || !selectionExists
+            self.renderedRevision = IDOptionsRevision;
+            [self updatePanelGeometry];
+        } else if (self.renderedRevision != IDOptionsRevision || !unchanged || !selectionExists
             || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) {
             [self render];
         }
@@ -679,6 +802,94 @@ static BOOL IDSupplementaryReady(id owner) {
     } @finally {
         self.updating = NO;
     }
+}
+static BOOL IDOpenFeedback(NSString *message) {
+    IDCoordinator *state = nil;
+    // The panel is the only user-visible feedback surface; never include notification text.
+    for (UIViewController *owner in IDOwners) {
+        state = IDState(owner);
+        if (state && state.panel.isViewLoaded && state.panel.view.window) {
+            IDDigestView *digest = (IDDigestView *)state.panel.view;
+            digest.cardNotice.text = message;
+            UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)openCardRequest:(id)request {
+    if (!NSThread.isMainThread || !request || !self.owner.view.window || self.owner.view.hidden
+        || self.owner.view.window.hidden || !UIApplication.sharedApplication.protectedDataAvailable) {
+        IDOpenFeedback(@"打开诊断：点击已收到；系统上下文不可用");
+        return NO;
+    }
+    IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
+    SEL authSEL = sel_registerName("isDeviceAuthenticated");
+    if (!IDMethod(object_getClass(self.owner), "isDeviceAuthenticated", "B", 2)
+        || !((BOOL (*)(id, SEL))objc_msgSend)(self.owner, authSEL)) {
+        IDOpenFeedback(@"打开诊断：设备认证不可用");
+        return NO;
+    }
+    id action = IDRead(request, "defaultAction");
+    if (!action) {
+        IDOpenFeedback(@"打开诊断：该通知没有可用原生打开动作");
+        return NO;
+    }
+
+    IDOpenFeedback(@"打开诊断：原生动作已找到");
+
+    /*
+     * iOS 17 declares this callback on NCNotificationStructuredListViewController,
+     * but its first argument is the actual NCNotificationListComponent.  The
+     * supplementary-view container is not that component and silently does nothing.
+     * Resolve masterList, require its exact runtime class, and check the complete ABI
+     * before objc_msgSend. No URL is manufactured and no notification text is logged.
+     */
+    const char *selectorName = "notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:";
+    Class ownerClass = object_getClass(self.owner);
+    Class componentClass = objc_getClass("NCNotificationMasterList");
+    id component = IDRead(self.owner, "masterList");
+    Method executeMethod = class_getInstanceMethod(ownerClass, sel_registerName(selectorName));
+    BOOL abiOK = executeMethod && method_getNumberOfArguments(executeMethod) == 8
+        && strcmp(method_getTypeEncoding(executeMethod), "v@:@@@B@@") == 0
+        && IDArgument(ownerClass, selectorName, 2, "@")
+        && IDArgument(ownerClass, selectorName, 3, "@")
+        && IDArgument(ownerClass, selectorName, 4, "@")
+        && IDArgument(ownerClass, selectorName, 5, "B")
+        && IDArgument(ownerClass, selectorName, 6, "@")
+        && IDArgument(ownerClass, selectorName, 7, "@");
+    if (!componentClass || !component || object_getClass(component) != componentClass || !abiOK) {
+        IDOpenFeedback(@"打开诊断：原生组件或动作 ABI 不匹配");
+        return NO;
+    }
+    IDOpenFeedback(@"打开诊断：原生接收器已找到；动作 ABI 已核验");
+    IDOpenFeedback(@"打开诊断：动作与原生组件已找到；正在派发");
+    self.pendingActionRequest = request;
+    self.pendingAction = action;
+    __weak IDCoordinator *weakSelf = self;
+    void (^completion)(void) = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            IDCoordinator *strongSelf = weakSelf;
+            if (strongSelf.pendingActionRequest == request) {
+                strongSelf.pendingActionRequest = nil;
+                strongSelf.pendingAction = nil;
+                IDOpenFeedback(@"打开诊断：原生动作回调已到达");
+            }
+        });
+    };
+    @try {
+        ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(self.owner,
+            sel_registerName(selectorName), component, action, request, YES, nil, completion);
+    } @catch (NSException *exception) {
+        self.pendingActionRequest = nil;
+        self.pendingAction = nil;
+        IDOpenFeedback(@"打开诊断：原生派发抛出异常");
+        return NO;
+    }
+    // This means the verified callback was invoked, not that the app launched.
+    IDOpenFeedback(@"打开诊断：派发已接受；等待原生回调");
+    return YES;
 }
 @end
 
@@ -693,30 +904,28 @@ static BOOL IDSupplementaryReady(id owner) {
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     IDCoordinator *state = IDEnsureState(self);
-    state.active = YES;
+    [state beginAppearance];
     IDLog("owner appeared");
     IDScheduleRefresh();
 }
 - (void)viewDidLayoutSubviews {
     %orig;
     IDCoordinator *state = IDEnsureState(self);
-    if (self.view.window && !state.active) {
-        state.active = YES;
+    if (self.view.window && !state.active && !state.dismissed) {
+        [state beginAppearance];
         IDDiagnostics[@"visibleOwnerSeen"] = @YES;
         IDScheduleRefresh(); // Never insert UI synchronously from a layout callback.
+    }
+    if (state.active) {
+        [state updatePanelGeometry];
+        [state updateNativeListVisibility];
     }
 }
 - (void)viewWillDisappear:(BOOL)animated {
     IDCoordinator *state = IDState(self);
-    state.active = NO;
+    @try { [state endAppearance]; }
+    @catch (NSException *exception) { [state disable]; }
     %orig;
-    __weak IDCoordinator *weakState = state;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        IDCoordinator *current = weakState;
-        if (!current || current.active) return;
-        @try { [current resetFilter]; }
-        @catch (NSException *exception) { [current disable]; }
-    });
 }
 - (void)insertNotificationRequest:(id)request {
     %orig;
@@ -741,11 +950,22 @@ static BOOL IDSupplementaryReady(id owner) {
 %end
 %end
 
+%group IDPrivacy
+%hook NCNotificationStructuredListViewController
+- (void)setDeviceAuthenticated:(BOOL)authenticated {
+    // Drop previous strings before native authentication state changes.
+    if (!authenticated) IDRedactContainedNow();
+    %orig;
+    IDScheduleRefresh();
+}
+%end
+%end
+
 %group IDFilter
 %hook NCNotificationStructuredListViewController
 - (BOOL)notificationMasterList:(id)master shouldFilterNotificationRequest:(id)request {
     BOOL original = %orig;
-    NSString *selected = IDState(self).selected;
+    NSString *selected = IDContainedMode ? nil : IDState(self).selected;
     if (original || !selected) return original;
     if (IDMethod(object_getClass(request), "isCriticalAlert", "B", 2)
         && ((BOOL (*)(id, SEL))objc_msgSend)(request, sel_registerName("isCriticalAlert"))) return NO;
@@ -788,6 +1008,10 @@ static void IDInstallHooks(void) {
         && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 2, "@")
         && IDArgument(owner, "toggleFilteringForSectionIdentifier:shouldFilter:", 3, "B");
     IDOwners = [NSHashTable weakObjectsHashTable];
+    if (IDMethod(owner, "setDeviceAuthenticated:", "v", 3)
+        && IDArgument(owner, "setDeviceAuthenticated:", 2, "B")) {
+        %init(IDPrivacy);
+    }
     if (IDFilteringReady) {
         %init(IDFilter);
     }
@@ -811,6 +1035,9 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         }
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
+            [state cancelClear]; state.clearMessage = nil;
+            if (!IDContainedMode || !IDEnabled || !IDGrouping || !state.active) [state dropContainedContent];
+            if (!IDHideNative) [state restoreNativeList];
             if (retry) {
                 state.recoveryAttempts = 0;
                 [state recover];
@@ -821,8 +1048,13 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
                 state.container = nil;
                 state.configuration = nil;
             }
+            if (!IDRememberFilter || !IDEnabled || !IDGrouping) {
+                state.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil);
+            }
             if (!IDEnabled || !IDGrouping) { state.recoveryAttempts = 0; [state resetFilter]; [state recover]; }
-            else if (state.active && !state.disabled) [state render];
+            // Snapshot/sort first; a direct render here would briefly use the old order.
+            else if (!state.active) { [state resetFilter]; }
+
         }
         if (!IDEnabled || !IDGrouping) IDStatus(@"disabled-by-preference", @"已按设置关闭分组");
         IDScheduleRefresh();
@@ -831,6 +1063,10 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         IDLoadOptions();
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataWillBecomeUnavailable
+            object:nil queue:nil usingBlock:^(NSNotification *notification) { IDRedactContainedNow(); }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataDidBecomeAvailable
+            object:nil queue:nil usingBlock:^(NSNotification *notification) { IDScheduleRefresh(); }];
         IDStatus(@"constructor-reached", @"SpringBoard 已加载本插件；尚未安装控制器钩子");
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, IDPreferenceChanged,
             CFSTR("com.local.islanddigest/changed"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
