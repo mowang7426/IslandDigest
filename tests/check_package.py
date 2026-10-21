@@ -6,7 +6,12 @@ import sys
 import tarfile
 
 
-def check(package, expected_version="0.1.3"):
+def check(package, expected_version="0.1.3", scheme="roothide"):
+    assert scheme in ("roothide", "rootless"), scheme
+    package_arch = "iphoneos-arm64e" if scheme == "roothide" else "iphoneos-arm64"
+    prefix = "" if scheme == "roothide" else "var/jb/"
+    expected_install_name = ("@loader_path/.jbroot/Library/MobileSubstrate/DynamicLibraries/IslandDigest.dylib"
+                             if scheme == "roothide" else "@rpath/IslandDigest.dylib")
     archive = package.read_bytes()
     assert archive[:8] == b"!<arch>\n", "Not a Debian ar archive"
     position = 8
@@ -22,7 +27,7 @@ def check(package, expected_version="0.1.3"):
         metadata_file = next(member for member in control.getmembers()
                              if member.name.split("/")[-1] == "control")
         metadata = control.extractfile(metadata_file).read().decode()
-        for expected in ("Architecture: iphoneos-arm64e", f"Version: {expected_version}",
+        for expected in (f"Architecture: {package_arch}", f"Version: {expected_version}",
                          "firmware (>= 15.0)", "firmware (<< 18.0)"):
             assert expected in metadata, expected
         assert all(member.name.split("/")[-1] not in
@@ -33,7 +38,7 @@ def check(package, expected_version="0.1.3"):
         files = [member for member in payload.getmembers() if member.isfile()]
         assert len(files) == 2
         assert all(member.name.lstrip("./").startswith(
-            "Library/MobileSubstrate/DynamicLibraries/") for member in files)
+            prefix + "Library/MobileSubstrate/DynamicLibraries/") for member in files)
         binary = payload.extractfile(next(member for member in files
                                          if member.name.endswith(".dylib"))).read()
         injection_filter = payload.extractfile(next(member for member in files
@@ -71,7 +76,7 @@ def check(package, expected_version="0.1.3"):
                     dependencies.append(value)
             command_offset += length
         assert minimum == 0xF0000, "Minimum iOS must be 15.0"
-        assert install_name == "@loader_path/.jbroot/Library/MobileSubstrate/DynamicLibraries/IslandDigest.dylib"
+        assert install_name == expected_install_name, install_name
         assert dependencies and all(value.startswith(("/System/Library/", "/usr/lib/"))
                                     for value in dependencies)
         assert signature_offset is not None
@@ -97,11 +102,12 @@ def check(package, expected_version="0.1.3"):
             verified += slot_count
         assert verified > 0
         architecture = "arm64e" if subtype & 0xFFFFFF == 2 else "arm64"
-        print(f"PASS {architecture}: iOS 15.0, RootHide install name, {verified} signed pages")
+        print(f"PASS {architecture}: iOS 15.0, {scheme} install name, {verified} signed pages")
     assert architectures == {0, 2}
     print("PASS metadata, payload, SpringBoard filter, system dependencies, no install scripts")
     print("SHA-256", hashlib.sha256(archive).hexdigest())
 
 
 if __name__ == "__main__":
-    check(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) > 2 else "0.1.3")
+    check(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) > 2 else "0.1.3",
+          sys.argv[3] if len(sys.argv) > 3 else "roothide")
