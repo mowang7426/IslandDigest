@@ -57,7 +57,7 @@
         : @"面板不可见或无卡片；保留原生列表";
     IDDiagnostics[@"nativeHideReason"] = self.nativeHideReason;
     IDDiagnostics[@"previewPolicyReason"] = IDPreviewWhenUnlocked
-        ? @"system-effective-policy-unverified; explicit-unlocked-setting-only; App Never still wins"
+        ? @"contentPreviewSetting-unmapped; system-effective-policy-unverified; explicit-unlocked-setting-only; App Never still wins"
         : @"user-disabled; fail-closed";
     IDDiagnostics[@"cardsRendered"] = @(IDContainedMode ? digest.builtCardCount : 0);
     NSUInteger redacted = 0;
