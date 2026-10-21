@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.2.3'
+assert info['CFBundleVersion'] == '0.2.4'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -55,8 +55,12 @@ assert 'IDLayoutPanel' in tweak and 'UIKit-window-bounded' in tweak
 assert 'self.renderedRevision != IDOptionsRevision' in tweak
 assert 'previous.latest' in tweak and 'previous.hasCriticalAlert' in tweak
 assert 'IDMiniControls = [IDStringOption(@"CategoryStyle"' in tweak
-assert 'MAX(44' in ui
-print('PASS experience source contracts (not runtime validation)')
+assert 'self.cardScroll.userInteractionEnabled = YES' in ui
+assert 'Scope the fallback to the card viewport' in ui
+assert 'content.userInteractionEnabled = NO' in (root / 'IDContainedUI.inc').read_text()
+assert '打开诊断：点击已收到；正在检查原生动作' in (root / 'IDContainedUI.inc').read_text()
+assert 'accessibilityCustomActions' in (root / 'IDContainedUI.inc').read_text()
+assert 'UIApplication.sharedApplication.openURL' not in tweak and 'openURL:' not in tweak
 
 clear = (root / 'IDClearCoordinator.inc').read_text()
 support = (root / 'IDClearSupport.inc').read_text()

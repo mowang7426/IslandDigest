@@ -43,7 +43,7 @@
             [shell.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;
             shell.backgroundColor = [UIColor.secondaryLabelColor colorWithAlphaComponent:0.08];
             UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisVertical; content.spacing = 5;
-            content.translatesAutoresizingMaskIntoConstraints = NO; [shell addSubview:content];
+            content.translatesAutoresizingMaskIntoConstraints = NO; content.userInteractionEnabled = NO; [shell addSubview:content];
             UIStackView *header = [UIStackView new]; header.spacing = 8; header.alignment = UIStackViewAlignmentCenter;
             UIImageView *icon = [[UIImageView alloc] initWithImage:group.icon ?: [UIImage systemImageNamed:@"app.fill"]];
             icon.contentMode = UIViewContentModeScaleAspectFit; icon.tintColor = UIColor.secondaryLabelColor;
@@ -75,6 +75,8 @@
             __weak UIButton *weakShell = shell;
             NSDictionary *cardModel = card;
             [shell addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+                // First operation is visible feedback; native action/auth is secondary.
+                IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
                 BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
                 if (!opened) {
                     weakShell.accessibilityValue = @"打开通知不可用";
@@ -83,6 +85,13 @@
                     weakShell.accessibilityValue = @"已请求打开通知";
                 }
             }] forControlEvents:UIControlEventTouchUpInside];
+            UIAccessibilityCustomAction *openAction = [[UIAccessibilityCustomAction alloc] initWithName:@"打开通知" actionHandler:^BOOL(UIAccessibilityCustomAction *action) {
+                IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
+                BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
+                weakShell.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
+                return YES;
+            }];
+            shell.accessibilityCustomActions = @[openAction];
             [self.cardStack addArrangedSubview:shell]; rendered++;
         }
     }

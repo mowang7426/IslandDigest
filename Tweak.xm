@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
+static CGFloat IDCardFeedbackUntil = 0;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -24,7 +25,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.3";
+    IDDiagnostics[@"version"] = @"0.2.4";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -85,6 +86,8 @@ static void IDLog(const char *event) {
     fclose(file);
 }
 
+static BOOL IDOpenFeedback(NSString *message);
+
 static int IDAcquireStartupMarker(const char *path) {
     int descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (descriptor < 0) return errno == EEXIST ? 1 : 2;
@@ -107,7 +110,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.3.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.4.startup-pending";
 #endif
 }
 
@@ -810,6 +813,7 @@ static BOOL IDOpenFeedback(NSString *message) {
         state = IDState(owner);
         if (state && state.panel.isViewLoaded && state.panel.view.window) {
             IDDigestView *digest = (IDDigestView *)state.panel.view;
+            IDCardFeedbackUntil = CACurrentMediaTime() + 2.0;
             digest.cardNotice.text = message;
             UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
             return YES;

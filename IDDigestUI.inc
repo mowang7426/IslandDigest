@@ -14,6 +14,7 @@
     [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
     self.cardScroll = [UIScrollView new]; self.cardScroll.alwaysBounceVertical = YES;
+    self.cardScroll.userInteractionEnabled = YES; self.cardScroll.delaysContentTouches = NO;
     // This is already an explicitly bounded sub-region, not a system full-screen list.
     self.cardScroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     self.cardScroll.contentInset = UIEdgeInsetsZero;
@@ -40,6 +41,20 @@
     self.accessibilityIdentifier = @"IslandDigest";
     return self;
 }
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // Scope the fallback to the card viewport. This repairs a transparent
+    // sibling/scroll-view interception without stealing category or footer taps.
+    if (!self.cardScroll.hidden && CGRectContainsPoint(self.cardScroll.frame, point)) {
+        CGPoint cardPoint = [self.cardScroll convertPoint:point fromView:self];
+        for (UIView *candidate in self.cardStack.arrangedSubviews) {
+            if (![candidate.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || candidate.hidden) continue;
+            CGPoint local = [candidate convertPoint:cardPoint fromView:self.cardScroll];
+            if (CGRectContainsPoint(candidate.bounds, local) && candidate.userInteractionEnabled) return candidate;
+        }
+    }
+    return [super hitTest:point withEvent:event];
+}
+
 - (void)clearTapped { [self.coordinator beginClear]; }
 - (CGFloat)rowHeight {
     CGFloat base = IDMiniControls ? 44 : 52;
