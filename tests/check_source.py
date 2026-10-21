@@ -21,7 +21,14 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.2.1'
+assert info['CFBundleVersion'] == '0.2.2'
+assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in (root / 'IDContainedUI.inc').read_text()
+assert 'UIControlEventTouchUpInside' in (root / 'IDContainedUI.inc').read_text()
+assert '打开通知不可用' in (root / 'IDContainedUI.inc').read_text()
+assert 'UIApplication.sharedApplication.openURL' not in tweak and 'openURL:' not in tweak
+assert 'requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:' in tweak
+assert 'void (^completion)(void)' in tweak
+assert 'NCNotificationViewController alloc' not in tweak
 assert 'AllowPreviewWhenUnlocked' in tweak and 'AllowPreviewWhenUnlocked' in prefs
 assert 'MoWang' in prefs
 assert 'contentPreviewSetting' in (root / 'IDContainedSupport.inc').read_text()

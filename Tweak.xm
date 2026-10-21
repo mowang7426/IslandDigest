@@ -24,7 +24,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.1";
+    IDDiagnostics[@"version"] = @"0.2.2";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -107,7 +107,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.1.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.2.startup-pending";
 #endif
 }
 
@@ -248,6 +248,9 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, weak) UIWindow *clearWindow;
 @property(nonatomic, strong) id clearMaster;
 @property(nonatomic, copy) NSString *clearMessage;
+@property(nonatomic, strong) id pendingActionRequest;
+@property(nonatomic, strong) id pendingAction;
+
 @property(nonatomic) NSUInteger clearRevision;
 - (void)beginClear;
 - (void)cancelClear;
@@ -800,24 +803,72 @@ static BOOL IDSupplementaryReady(id owner) {
         self.updating = NO;
     }
 }
+static BOOL IDOpenFeedback(NSString *message) {
+    IDCoordinator *state = nil;
+    // The panel is the only user-visible feedback surface; never include notification text.
+    for (UIViewController *owner in IDOwners) {
+        state = IDState(owner);
+        if (state && state.panel.isViewLoaded && state.panel.view.window) {
+            IDDigestView *digest = (IDDigestView *)state.panel.view;
+            digest.cardNotice.text = message;
+            UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
+            return YES;
+        }
+    }
+    return NO;
+}
+
 - (BOOL)openCardRequest:(id)request {
     if (!NSThread.isMainThread || !request || !self.owner.view.window || self.owner.view.hidden
-        || !UIApplication.sharedApplication.protectedDataAvailable) return NO;
+        || self.owner.view.window.hidden || !UIApplication.sharedApplication.protectedDataAvailable) {
+        IDOpenFeedback(@"打开通知不可用");
+        return NO;
+    }
     SEL authSEL = sel_registerName("isDeviceAuthenticated");
     if (!IDMethod(object_getClass(self.owner), "isDeviceAuthenticated", "B", 2)
-        || !((BOOL (*)(id, SEL))objc_msgSend)(self.owner, authSEL)) return NO;
+        || !((BOOL (*)(id, SEL))objc_msgSend)(self.owner, authSEL)) {
+        IDOpenFeedback(@"打开通知不可用");
+        return NO;
+    }
     id action = IDRead(request, "defaultAction");
-    if (!action) return NO;
-    Class viewClass = objc_getClass("NCNotificationViewController");
-    const char *initName = "_initWithNotificationRequest:revealingAdditionalContentOnPresentation:";
-    const char *executeName = "_executeDefaultAction:";
-    if (!viewClass || !IDMethod(viewClass, initName, "@", 4)
-        || !IDArgument(viewClass, initName, 2, "@") || !IDArgument(viewClass, initName, 3, "B")
-        || !IDMethod(viewClass, executeName, "v", 3) || !IDArgument(viewClass, executeName, 2, "B")) return NO;
-    NCNotificationViewController *notification = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(
-        [viewClass alloc], sel_registerName(initName), request, YES);
-    if (!notification) return NO;
-    ((void (*)(id, SEL, BOOL))objc_msgSend)(notification, sel_registerName(executeName), YES);
+    if (!action) {
+        IDOpenFeedback(@"打开通知不可用");
+        return NO;
+    }
+
+    /*
+     * This is the iOS 17 native path used by the structured list delegate.
+     * Do not manufacture a URL or instantiate an unattached NCNotificationViewController:
+     * that controller has no delegate/action context and silently no-ops. Every selector
+     * and argument encoding is checked before objc_msgSend, including the completion block.
+     */
+    const char *selectorName = "notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:";
+    Class ownerClass = object_getClass(self.owner);
+    if (!IDMethod(ownerClass, selectorName, "v", 8)
+        || !IDArgument(ownerClass, selectorName, 2, "@")
+        || !IDArgument(ownerClass, selectorName, 3, "@")
+        || !IDArgument(ownerClass, selectorName, 4, "@")
+        || !IDArgument(ownerClass, selectorName, 5, "B")
+        || !IDArgument(ownerClass, selectorName, 6, "@")
+        || !IDArgument(ownerClass, selectorName, 7, "@")) {
+        IDOpenFeedback(@"打开通知不可用");
+        return NO;
+    }
+    // Retain the exact request/action until native completion; do not re-fetch by identifier.
+    self.pendingActionRequest = request;
+    self.pendingAction = action;
+    void (^completion)(void) = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.pendingActionRequest == request) {
+                self.pendingActionRequest = nil;
+                self.pendingAction = nil;
+                IDOpenFeedback(@"已请求打开通知");
+            }
+        });
+    };
+    ((void (*)(id, SEL, id, id, id, BOOL, id, id))objc_msgSend)(self.owner,
+        sel_registerName(selectorName), self.container, action, request, YES, nil, completion);
+    IDOpenFeedback(@"已请求打开通知");
     return YES;
 }
 @end
