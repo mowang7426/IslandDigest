@@ -46,8 +46,51 @@
     self.clearButton.accessibilityIdentifier = @"IslandDigestClear";
     [self.clearButton addTarget:self action:@selector(clearTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:self.clearButton];
+    // Keep expanded views and scroll/model identity; only the outer hit bounds fold.
+    self.expandedContent = [[UIView alloc] initWithFrame:self.bounds];
+    for (UIView *view in self.subviews.copy) {
+        if (view != self.glass) [self.expandedContent addSubview:view];
+    }
+    [self addSubview:self.expandedContent];
+    self.collapseButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.collapseButton setImage:[UIImage systemImageNamed:@"chevron.up"] forState:UIControlStateNormal];
+    self.collapseButton.accessibilityLabel = @"折叠通知面板";
+    self.collapseButton.accessibilityIdentifier = @"IslandDigestCollapse";
+    [self.collapseButton addTarget:self action:@selector(collapseTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.expandedContent addSubview:self.collapseButton];
+    self.capsuleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.capsuleButton setImage:[UIImage systemImageNamed:@"bell.badge.fill"] forState:UIControlStateNormal];
+    self.capsuleButton.titleLabel.font = [UIFont monospacedDigitSystemFontOfSize:17 weight:UIFontWeightSemibold];
+    self.capsuleButton.titleLabel.adjustsFontSizeToFitWidth = YES;
+    self.capsuleButton.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    self.capsuleButton.layer.cornerRadius = 24;
+    self.capsuleButton.accessibilityIdentifier = @"IslandDigestCapsule";
+    self.capsuleButton.accessibilityHint = @"点按恢复完整面板；不会打开或删除通知";
+    [self.capsuleButton addTarget:self action:@selector(collapseTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:self.capsuleButton];
+    [self updateCollapsePresentation];
     self.accessibilityIdentifier = @"IslandDigest";
     return self;
+}
+- (void)collapseTapped { [self.coordinator toggleCollapsed]; }
+- (BOOL)capsuleReachable {
+    CGRect visible = self.window ? [self convertRect:self.window.bounds fromView:self.window] : CGRectZero;
+    CGRect intersection = CGRectIntersection(self.bounds, visible);
+    return IDPanelCapsuleReachable(self.window && !self.hidden && !CGRectIsNull(intersection),
+        self.userInteractionEnabled && self.capsuleButton.enabled && !self.capsuleButton.hidden,
+        intersection.size.width, intersection.size.height);
+}
+- (void)updateCollapsePresentation {
+    BOOL compact = IDPanelCompact(self.coordinator.collapseState);
+    BOOL moving = IDPanelTransitioning(self.coordinator.collapseState);
+    self.expandedContent.alpha = compact ? 0 : 1;
+    self.expandedContent.userInteractionEnabled = !compact && !moving;
+    self.expandedContent.accessibilityElementsHidden = compact || moving;
+    self.capsuleButton.alpha = compact ? 1 : 0;
+    self.capsuleButton.hidden = !compact && !moving;
+    self.capsuleButton.enabled = YES; // In-flight taps are ignored by the state machine.
+    self.capsuleButton.accessibilityElementsHidden = !compact || moving;
+    self.collapseButton.enabled = !moving;
 }
 - (void)clearTapped { [self.coordinator beginClear]; }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
@@ -58,6 +101,7 @@
         self.cardScroll.contentSize.height, self.cardScroll.bounds.size.height);
 }
 - (void)cardTapped:(UITapGestureRecognizer *)recognizer {
+    if (self.coordinator.collapseState != IDPanelExpanded) return;
     if (!IDScrollTapAllowed(recognizer.state == UIGestureRecognizerStateEnded,
         self.cardScroll.dragging, self.cardScroll.decelerating, self.cardTapStartOffset,
         self.cardScroll.contentOffset.y, self.cardScroll.contentSize.height,
@@ -77,9 +121,13 @@
     CGFloat base = IDMiniControls ? 44 : 52;
     return MAX(44, MIN(80, [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody] scaledValueForValue:base]));
 }
+- (NSUInteger)categoryColumnsForWidth:(CGFloat)width {
+    CGFloat scale = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledValueForValue:12] / 12.0;
+    return IDExperienceGridColumns(width, IDGridLayout, (int)IDGridColumns, scale);
+}
 - (CGFloat)categoryHeightForWidth:(CGFloat)width {
     CGFloat row = [self rowHeight];
-    NSUInteger columns = IDExperienceColumns(width, IDGridLayout);
+    NSUInteger columns = [self categoryColumnsForWidth:width];
     NSUInteger rows = IDGridLayout ? IDExperienceRows(self.stack.subviews.count, columns) : 1;
     CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
     if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
@@ -98,7 +146,11 @@
 - (CGSize)intrinsicContentSize { return CGSizeMake(UIViewNoIntrinsicMetric, [self sizeThatFits:self.bounds.size].height); }
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGFloat width = self.bounds.size.width, row = [self rowHeight];
+    self.capsuleButton.frame = self.bounds;
+    if (IDPanelTransitioning(self.coordinator.collapseState)) return;
+    CGSize contentSize = self.expandedSize.width > 0 ? self.expandedSize : self.bounds.size;
+    self.expandedContent.frame = (CGRect){CGPointZero, contentSize};
+    CGFloat width = contentSize.width, row = [self rowHeight];
     self.backgroundColor = UIColor.clearColor;
     self.glass.frame = self.bounds;
     self.glass.effect = IDPanelBlur ? [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial] : nil;
@@ -107,27 +159,29 @@
     self.heading.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold] maximumPointSize:22];
     self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
     self.hint.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
-    CGFloat contentWidth = MAX(0, width - 58);
+    CGFloat contentWidth = MAX(0, width - 106);
     self.heading.frame = CGRectMake(14, 8, MAX(0, contentWidth * 0.52 - 14), 26);
     self.heading.adjustsFontSizeToFitWidth = YES;
     self.detail.frame = CGRectMake(contentWidth * 0.52, 12, MAX(0, contentWidth * 0.48), 20);
+    self.collapseButton.frame = CGRectMake(MAX(0, width - 96), 0, 44, 44);
     self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44);
     CGFloat category = [self categoryHeightForWidth:width];
-    if (IDContainedMode) category = MIN(category, MAX(66, self.bounds.size.height - 38 - 88));
+    if (IDContainedMode) category = MIN(category, MAX(66, contentSize.height - 38 - 88));
     self.scroll.frame = CGRectMake(0, 44, width, MAX(0, category - 66));
     self.hint.frame = CGRectMake(14, category - 19, MAX(0, width - 28), 16);
-    self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, self.bounds.size.height - category - 38));
-    self.cardNotice.frame = CGRectMake(14, MAX(category, self.bounds.size.height - 36), MAX(0, width - 28), 32);
+    self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, contentSize.height - category - 38));
+    self.cardNotice.frame = CGRectMake(14, MAX(category, contentSize.height - 36), MAX(0, width - 28), 32);
     self.scroll.showsHorizontalScrollIndicator = !IDGridLayout;
     self.scroll.showsVerticalScrollIndicator = IDGridLayout;
     self.scroll.alwaysBounceHorizontal = !IDGridLayout;
     self.scroll.alwaysBounceVertical = IDGridLayout;
-    NSUInteger columns = IDExperienceColumns(width, IDGridLayout), index = 0;
+    NSUInteger columns = [self categoryColumnsForWidth:width], index = 0;
     CGFloat x = 14;
-    CGFloat cellWidth = MAX(1, (width - 28 - (columns - 1) * 8) / columns);
+    CGFloat padding = IDGridLayout ? 8 : 14, gap = IDGridLayout ? 6 : 8;
+    CGFloat cellWidth = MAX(1, (width - 2 * padding - (columns - 1) * gap) / columns);
     for (UIView *button in self.stack.subviews) {
         if (IDGridLayout) {
-            button.frame = CGRectMake(14 + (index % columns) * (cellWidth + 8), (index / columns) * (row + 8), cellWidth, row);
+            button.frame = CGRectMake(padding + (index % columns) * (cellWidth + gap), (index / columns) * (row + 8), cellWidth, row);
         } else {
             CGSize fitting = [button systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
             CGFloat w = MAX(96, MIN(MAX(96, width - 28), fitting.width));
@@ -143,6 +197,7 @@
     // Resolve after assigning the bounded viewport frame, including width changes.
     [self.cardScroll setNeedsLayout]; [self.cardScroll layoutIfNeeded];
     [self.cardStack layoutIfNeeded];
+    self.retainedLayoutReady = [self expandedCardsLayoutReady];
     [self.coordinator updatePanelGeometry];
 }
 - (void)pinGesture:(UILongPressGestureRecognizer *)recognizer {
@@ -155,6 +210,8 @@
     CGPoint offset = self.scroll.contentOffset;
     for (UIView *view in self.stack.subviews.copy) [view removeFromSuperview];
     NSUInteger total = 0; for (IDGroup *group in groups) total += group.count;
+    [self.capsuleButton setTitle:[NSString stringWithFormat:@"  %lu", (unsigned long)total] forState:UIControlStateNormal];
+    self.capsuleButton.accessibilityLabel = [NSString stringWithFormat:@"通知面板已折叠，共 %lu 条通知，点按展开", (unsigned long)total];
     self.detail.text = IDShowCounts ? [NSString stringWithFormat:@"%lu 个应用 · %lu 条", (unsigned long)groups.count, (unsigned long)total] : @"保留原生通知操作";
     NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];
     [entries addObjectsFromArray:groups.count > 128 ? [groups subarrayWithRange:NSMakeRange(0, 128)] : groups];
@@ -169,15 +226,17 @@
         button.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9] : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
         UIColor *foreground = active ? UIColor.systemBackgroundColor : UIColor.labelColor;
         UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisHorizontal;
-        content.alignment = UIStackViewAlignmentCenter; content.spacing = IDMiniControls ? 4 : 6; content.userInteractionEnabled = NO;
+        content.alignment = UIStackViewAlignmentCenter; content.spacing = IDGridLayout ? 2 : (IDMiniControls ? 4 : 6); content.userInteractionEnabled = NO;
         content.translatesAutoresizingMaskIntoConstraints = NO; [button addSubview:content];
         UIImageView *icon = [[UIImageView alloc] initWithImage:group.icon ?: [UIImage systemImageNamed:group ? @"app.fill" : @"square.stack.3d.up.fill"]];
         icon.tintColor = foreground; icon.contentMode = UIViewContentModeScaleAspectFit; icon.layer.cornerRadius = 7; icon.clipsToBounds = YES;
-        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:IDMiniControls ? 20 : 24].active = YES; [icon.heightAnchor constraintEqualToConstant:IDMiniControls ? 20 : 24].active = YES;
+        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:IDGridLayout ? 18 : (IDMiniControls ? 20 : 24)].active = YES; [icon.heightAnchor constraintEqualToConstant:IDGridLayout ? 18 : (IDMiniControls ? 20 : 24)].active = YES;
         UILabel *name = [UILabel new]; name.text = group ? group.name : @"全部"; name.textColor = foreground;
         name.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledFontForFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold] maximumPointSize:22];
         name.adjustsFontForContentSizeCategory = YES;
         name.lineBreakMode = NSLineBreakByTruncatingTail;
+        [name setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+        [name.widthAnchor constraintGreaterThanOrEqualToConstant:0].active = YES;
         [name.widthAnchor constraintLessThanOrEqualToConstant:IDMiniControls ? 100 : 120].active = YES; [content addArrangedSubview:name];
         if (pinned) {
             UIImageView *pin = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"pin.fill"]]; pin.tintColor = foreground;
@@ -189,7 +248,7 @@
             badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold]; badge.textColor = foreground; badge.alpha = 0.75;
             [content addArrangedSubview:badge];
         }
-        [NSLayoutConstraint activateConstraints:@[[content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:10], [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-10], [content.centerYAnchor constraintEqualToAnchor:button.centerYAnchor]]];
+        [NSLayoutConstraint activateConstraints:@[[content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:IDGridLayout ? 5 : 10], [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:IDGridLayout ? -5 : -10], [content.centerYAnchor constraintEqualToAnchor:button.centerYAnchor]]];
         // Leave buttons enabled for pin actions even if filtering is unavailable.
         button.accessibilityIdentifier = group.identifier;
         button.accessibilityLabel = [NSString stringWithFormat:@"%@%@，%lu 条通知", pinned ? @"已置顶，" : @"", group ? group.name : @"全部", (unsigned long)count];

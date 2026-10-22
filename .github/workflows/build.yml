@@ -41,6 +41,9 @@ jobs:
         run: |
           python3 tests/check_source.py
           python3 tests/check_contained.py
+          python3 tests/check_collapse.py
+          cc -Wall -Wextra -Werror tests/Collapse.c -lm -o /tmp/id-collapse-tests
+          /tmp/id-collapse-tests
           cc -Wall -Wextra -Werror tests/Scroll.c -lm -o /tmp/id-scroll-tests
           /tmp/id-scroll-tests
           cc -Wall -Wextra -Werror tests/Contained.c -o /tmp/id-contained-tests
@@ -63,7 +66,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.2.9', '${{ matrix.scheme }}'], check=True)
+                          '0.3.0', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

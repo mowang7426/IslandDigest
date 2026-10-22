@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.2.9'
+assert info['CFBundleVersion'] == '0.3.0'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained

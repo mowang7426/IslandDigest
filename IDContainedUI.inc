@@ -2,6 +2,7 @@
     // A snapshot rebuild must not retarget a finger already down to a new request.
     self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.builtCardCount = 0;
+    self.retainedLayoutReady = NO;
     // Clear accessible strings as well as removing labels; no stale preview in AX.
     for (UIView *view in self.cardStack.arrangedSubviews.copy) {
         IDContainedClearView(view);
@@ -114,7 +115,11 @@
     self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, previousOffset.y), maximum));
 }
 - (BOOL)cardsReadyForNativeHide {
-    // A clipped first page is not sufficient: all stacked content must be reachable.
+    if (IDPanelCompact(self.coordinator.collapseState)) return NO;
+    return [self expandedCardsLayoutReady];
+}
+- (BOOL)expandedCardsLayoutReady {
+    // Retained expanded coordinates are independently verified, never called visible capsule cards.
     CGFloat requiredHeight = CGRectGetMaxY(self.cardStack.frame) + 12;
     if (!self.cardScroll.scrollEnabled || !self.cardScroll.panGestureRecognizer.enabled
         || !isfinite(self.cardScroll.contentSize.height)

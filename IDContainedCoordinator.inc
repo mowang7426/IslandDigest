@@ -29,10 +29,14 @@
     BOOL cardViewportVisible = digest.cardScroll.window && !digest.cardScroll.hidden
         && digest.cardScroll.bounds.size.height >= 44 && digest.cardScroll.bounds.size.width >= 44;
     BOOL cardsReady = [digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards];
+    BOOL compact = IDPanelCompact(self.collapseState);
+    BOOL capsuleReady = compact && IDPanelRetainedHide([digest capsuleReachable],
+        digest.retainedLayoutReady && [digest expandedCardsLayoutReady], [self.cards isEqual:self.renderedCards]);
+    BOOL representationReady = compact ? capsuleReady : (cardViewportVisible && cardsReady);
     id actionComponent = IDRead(self.owner, "masterList");
     NSString *actionABIDiagnostic = IDActionABIDiagnostic(self.owner, actionComponent, NULL);
     BOOL forwardingSupported = !actionABIDiagnostic;
-    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible && cardsReady && forwardingSupported;
+    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && representationReady && forwardingSupported;
     BOOL shouldHide = IDContainedShouldHide(IDEnabled, IDGrouping, IDContainedMode, IDHideNative,
         self.active, self.disabled, supported, self.panel.view.window && !self.panel.view.hidden, self.cards.count);
     if (IDContainedMustRestore(self.hiddenNativeList != candidate, shouldHide)) [self restoreNativeList];
@@ -55,6 +59,8 @@
         : !forwardingSupported ? [NSString stringWithFormat:@"原生列表保留（%@）", actionABIDiagnostic ?: @"原生动作 ABI 不支持"]
         : !compatible ? @"原生列表接口不匹配；保留原生列表"
         : !separate ? @"面板未独立挂载；保留原生列表"
+        : compact && !capsuleReady ? @"折叠胶囊或保留布局未验证；原生列表保留"
+        : compact && shouldHide ? @"面板已折叠；完整布局与动作能力已验证，原生列表继续隐藏；点按胶囊恢复"
         : !cardViewportVisible ? @"卡片可视空间不足；保留原生列表"
         : !cardsReady ? @"卡片尚未完成可见布局；保留原生列表"
         : shouldHide ? @"已隐藏原生列表；未删除任何通知"
@@ -68,6 +74,10 @@
     for (NSDictionary *card in self.cards) if ([card[@"redacted"] boolValue]) redacted++;
     IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? redacted : 0);
     IDDiagnostics[@"cardsLayoutReady"] = @(cardsReady);
+    IDDiagnostics[@"panelCollapseState"] = @[@"expanded", @"collapsing", @"collapsed", @"expanding"][self.collapseState];
+    IDDiagnostics[@"retainedExpandedLayoutReady"] = @(digest.retainedLayoutReady);
+    IDDiagnostics[@"capsuleReachable"] = @([digest capsuleReachable]);
+    IDDiagnostics[@"capsuleHideReady"] = @(capsuleReady);
     // Geometry only, never notification text; helps verify real device content guides.
     IDDiagnostics[@"cardsContentHeight"] = @(digest.cardScroll.contentSize.height);
     IDDiagnostics[@"cardsViewportHeight"] = @(digest.cardScroll.bounds.size.height);

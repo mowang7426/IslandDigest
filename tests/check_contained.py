@@ -64,7 +64,10 @@ assert 'if (!readable) return NO' in ui
 assert 'valid == self.builtCardCount && visible' in ui
 assert 'CGRectIntersection(frame, self.cardScroll.bounds)' in ui
 assert '[digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards]' in coordinator
-assert '&& cardViewportVisible && cardsReady' in coordinator
+assert '&& ownsOrUnclaimed && representationReady && forwardingSupported' in coordinator
+assert 'compact ? capsuleReady : (cardViewportVisible && cardsReady)' in coordinator
+assert 'digest.retainedLayoutReady && [digest expandedCardsLayoutReady]' in coordinator
+assert 'IDPanelRetainedHide([digest capsuleReachable]' in coordinator
 assert 'digest.builtCardCount' in coordinator and 'cardsLayoutReady' in coordinator
 render = main.split('- (void)render {',1)[1].split('\n- (void)updatePanelGeometry',1)[0]
 assert render.index('showCards]') < render.index('[self updateNativeListVisibility]')
