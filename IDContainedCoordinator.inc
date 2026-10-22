@@ -33,7 +33,7 @@
     BOOL compact = IDPanelCompact(self.collapseState);
     BOOL capsuleReady = compact && IDPanelRetainedHide([digest capsuleReachable],
         digest.retainedLayoutReady && [digest expandedCardsLayoutReady], [self.cards isEqual:self.renderedCards]);
-    BOOL representationReady = compact ? capsuleReady : (cardViewportVisible && cardsReady);
+    BOOL representationReady = IDFirstFrameRepresentationReady(compact, capsuleReady, cardViewportVisible, cardsReady);
     id actionComponent = IDRead(self.owner, "masterList");
     NSString *actionABIDiagnostic = IDActionABIDiagnostic(self.owner, actionComponent, NULL);
     BOOL forwardingSupported = !actionABIDiagnostic;
@@ -47,6 +47,10 @@
         self.nativeHideToken = [NSObject new];
         objc_setAssociatedObject(candidate, &IDNativeHideOwnerKey, self.nativeHideToken, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         candidate.hidden = YES;
+        if (IDPerformanceDiagnostics && !self.firstHideRecorded) {
+            self.firstHideRecorded = YES;
+            IDDiagnostics[@"firstHideMs"] = @((IDMonotonic() - self.appearanceStarted) * 1000);
+        }
     }
     IDDiagnostics[@"containedEnabled"] = @(IDContainedMode);
     IDDiagnostics[@"hideNativeRequested"] = @(IDHideNative);

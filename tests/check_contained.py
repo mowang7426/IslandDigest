@@ -65,7 +65,7 @@ assert 'valid == self.builtCardCount && visible' in ui
 assert 'CGRectIntersection(frame, self.cardScroll.bounds)' in ui
 assert '[digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards]' in coordinator
 assert '&& ownsOrUnclaimed && representationReady && forwardingSupported' in coordinator
-assert 'compact ? capsuleReady : (cardViewportVisible && cardsReady)' in coordinator
+assert 'IDFirstFrameRepresentationReady(compact, capsuleReady, cardViewportVisible, cardsReady)' in coordinator
 assert 'digest.retainedLayoutReady && [digest expandedCardsLayoutReady]' in coordinator
 assert 'IDPanelRetainedHide([digest capsuleReachable]' in coordinator
 assert 'digest.builtCardCount' in coordinator and 'cardsLayoutReady' in coordinator

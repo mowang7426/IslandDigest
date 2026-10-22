@@ -42,6 +42,9 @@ jobs:
           python3 tests/check_source.py
           python3 tests/check_contained.py
           python3 tests/check_collapse.py
+          python3 tests/check_first_frame_palette.py
+          cc -Wall -Wextra -Werror tests/FirstFramePalette.c -lm -o /tmp/id-first-frame-tests
+          /tmp/id-first-frame-tests
           python3 tests/check_performance_text.py
           cc -Wall -Wextra -Werror tests/Performance.c -o /tmp/id-performance-tests
           /tmp/id-performance-tests
@@ -69,7 +72,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.3', '${{ matrix.scheme }}'], check=True)
+                          '0.3.4', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
