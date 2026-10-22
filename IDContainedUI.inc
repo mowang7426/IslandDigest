@@ -9,8 +9,8 @@
         IDContainedClearView(view);
         if ([view isKindOfClass:IDCardView.class]) ((IDCardView *)view).openAction = nil;
         view.accessibilityCustomActions = nil;
-        view.hidden = YES;
     }
+    self.cardScroll.hidden = YES; // Hide one viewport, not 160 arranged views/UISV-hiding constraints.
     self.cardNotice.text = nil;
 }
 - (UILabel *)cardLabel:(NSString *)text style:(UIFontTextStyle)style color:(UIColor *)color {

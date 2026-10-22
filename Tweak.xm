@@ -615,7 +615,7 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (BOOL)workAllowed {
     return IDPerformanceWorkAllowed(self.active, self.disabled, self.owner.isViewLoaded,
-        self.owner.viewIfLoaded.window != nil, self.owner.viewIfLoaded.hidden);
+        self.owner.viewIfLoaded.window != nil, self.owner.viewIfLoaded.hidden || self.owner.viewIfLoaded.window.hidden);
 }
 - (void)schedulePresentation {
     if (!IDPerformanceEnqueue([self workAllowed], self.presentationPending)) return;

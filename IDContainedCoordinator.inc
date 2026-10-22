@@ -87,8 +87,8 @@
     if (IDContainedMode && digest.cardNotice) digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
 }
 - (void)dropContainedContent {
+    [self restoreNativeList]; // Restore native access before any potentially large privacy walk.
     self.cards = @[];
     self.renderedCards = nil;
     if (self.panel.isViewLoaded) [(IDDigestView *)self.panel.view dropCards];
-    [self restoreNativeList];
 }
