@@ -68,12 +68,10 @@
     self.capsuleButton.titleLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
     self.capsuleButton.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.capsuleButton.titleLabel.minimumScaleFactor = 0.75;
-    self.capsuleButton.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
     self.capsuleButton.backgroundColor = UIColor.clearColor;
     self.capsuleButton.opaque = NO;
     self.capsuleButton.layer.backgroundColor = UIColor.clearColor.CGColor;
     self.capsuleButton.layer.shadowOpacity = 0;
-    self.capsuleButton.adjustsImageWhenHighlighted = YES;
     self.capsuleButton.accessibilityIdentifier = @"IslandDigestCapsule";
     self.capsuleButton.accessibilityHint = @"点按恢复完整面板；不会打开或删除通知";
     [self.capsuleButton addTarget:self action:@selector(collapseTapped) forControlEvents:UIControlEventTouchUpInside];
