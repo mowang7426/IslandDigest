@@ -13,18 +13,21 @@
 #import "IDClearLogic.h"
 #import "IDContainedLogic.h"
 #import "IDLayoutLogic.h"
+#import "IDScrollLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
+static CGFloat IDPanelOpacity = 0;
+static BOOL IDPanelBlur = NO;
 static NSInteger IDSortMode;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.8";
+    IDDiagnostics[@"version"] = @"0.2.9";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -47,6 +50,8 @@ static void IDLoadOptions(void) {
     IDPanelTopOffset = IDNumberOption(@"PanelTopOffset", 220, 0, 420);
     IDPanelSideInset = IDNumberOption(@"PanelSideInset", 8, 8, 64);
     IDPanelMaxHeight = IDNumberOption(@"PanelMaxHeight", 360, 240, 600);
+    IDPanelOpacity = IDNumberOption(@"PanelBackgroundOpacity", 0, 0, 100) / 100.0;
+    IDPanelBlur = IDPref(@"PanelBlur", NO);
     IDOptionsRevision++;
 }
 
@@ -109,7 +114,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.8.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.9.startup-pending";
 #endif
 }
 
@@ -220,7 +225,19 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 
 @class IDCoordinator;
 
-@interface IDDigestView : UIView
+/* Card touch handling belongs exclusively to the scroll view recognizer.
+ * VoiceOver activation uses the very same action block without synthesizing touch. */
+@interface IDCardView : UIView
+@property(nonatomic, copy) void (^openAction)(void);
+@end
+@implementation IDCardView
+- (BOOL)accessibilityActivate {
+    if (!self.openAction) return NO;
+    self.openAction(); return YES;
+}
+@end
+
+@interface IDDigestView : UIView <UIGestureRecognizerDelegate>
 @property(nonatomic, strong) UIVisualEffectView *glass;
 @property(nonatomic, strong) UILabel *heading;
 @property(nonatomic, strong) UILabel *detail;
@@ -231,8 +248,8 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) UIScrollView *cardScroll;
 @property(nonatomic, strong) UIStackView *cardStack;
 @property(nonatomic, strong) UILabel *cardNotice;
-@property(nonatomic, strong) UIView *cardTapLayer;
-@property(nonatomic, strong) NSMutableArray<UIButton *> *cardTapButtons;
+@property(nonatomic, strong) UITapGestureRecognizer *cardTap;
+@property(nonatomic) CGFloat cardTapStartOffset;
 @property(nonatomic) NSUInteger builtCardCount;
 - (BOOL)cardsReadyForNativeHide;
 - (void)showCards;

@@ -3,7 +3,8 @@
     self = [super initWithFrame:frame];
     if (!self) return nil;
     self.layer.cornerRadius = 24; self.layer.cornerCurve = kCACornerCurveContinuous; self.clipsToBounds = YES;
-    self.glass = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial]];
+    self.backgroundColor = UIColor.clearColor;
+    self.glass = [[UIVisualEffectView alloc] initWithEffect:nil];
     self.glass.userInteractionEnabled = NO; [self addSubview:self.glass];
     self.heading = [UILabel new]; self.heading.text = @"按应用分组"; self.heading.textColor = UIColor.labelColor; [self addSubview:self.heading];
     self.detail = [UILabel new]; self.detail.textColor = UIColor.secondaryLabelColor; self.detail.textAlignment = NSTextAlignmentRight;
@@ -14,7 +15,14 @@
     [self addSubview:self.scroll];
     self.stack = [UIView new]; [self.scroll addSubview:self.stack];
     self.cardScroll = [UIScrollView new]; self.cardScroll.alwaysBounceVertical = YES;
-    self.cardScroll.userInteractionEnabled = YES; self.cardScroll.delaysContentTouches = NO;
+    self.cardScroll.userInteractionEnabled = YES; self.cardScroll.delaysContentTouches = YES;
+    self.cardScroll.scrollEnabled = YES; self.cardScroll.canCancelContentTouches = YES;
+    self.cardScroll.clipsToBounds = YES; self.cardScroll.showsVerticalScrollIndicator = YES;
+    self.cardScroll.backgroundColor = UIColor.clearColor;
+    self.cardTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(cardTapped:)];
+    self.cardTap.cancelsTouchesInView = NO; self.cardTap.delegate = self;
+    [self.cardTap requireGestureRecognizerToFail:self.cardScroll.panGestureRecognizer];
+    [self.cardScroll addGestureRecognizer:self.cardTap];
     // This is already an explicitly bounded sub-region, not a system full-screen list.
     self.cardScroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     self.cardScroll.contentInset = UIEdgeInsetsZero;
@@ -38,56 +46,32 @@
     self.clearButton.accessibilityIdentifier = @"IslandDigestClear";
     [self.clearButton addTarget:self action:@selector(clearTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:self.clearButton];
-    // A direct sibling interaction layer avoids UIScrollView/UIStackView hit testing.
-    self.cardTapLayer = [UIView new]; self.cardTapLayer.userInteractionEnabled = YES;
-    self.cardTapLayer.backgroundColor = UIColor.clearColor; self.cardTapLayer.accessibilityElementsHidden = YES;
-    self.cardTapButtons = [NSMutableArray array]; [self addSubview:self.cardTapLayer];
     self.accessibilityIdentifier = @"IslandDigest";
     return self;
 }
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    // The explicit overlay owns only exact card frames; leave all other regions
-    // to UIKit so category buttons and the clear control remain reachable.
-    return [super hitTest:point withEvent:event];
-}
-
 - (void)clearTapped { [self.coordinator beginClear]; }
-- (void)rebuildCardTapOverlay {
-    if (!self.cardTapLayer) return;
-    for (UIButton *button in self.cardTapButtons) [button removeFromSuperview];
-    [self.cardTapButtons removeAllObjects];
-    self.cardTapLayer.frame = self.cardScroll.frame;
-    self.cardTapLayer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self bringSubviewToFront:self.cardTapLayer];
-    self.cardTapLayer.hidden = self.cardScroll.hidden;
-    if (self.cardScroll.hidden) return;
-    for (UIView *shell in self.cardStack.arrangedSubviews) {
-        if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || shell.hidden) continue;
-        CGRect frame = [shell convertRect:shell.bounds toView:self.cardTapLayer];
-        frame = CGRectIntersection(frame, self.cardTapLayer.bounds);
-        if (CGRectIsNull(frame) || frame.size.width < 44 || frame.size.height < 22) continue;
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        // Keep the full clipped card hit area without drawing debug chrome.
-        button.frame = frame; button.backgroundColor = UIColor.clearColor;
-        button.enabled = YES; button.userInteractionEnabled = YES;
-        button.accessibilityIdentifier = @"IslandDigestCardTapProbe";
-        button.accessibilityLabel = shell.accessibilityLabel;
-        button.accessibilityTraits = UIAccessibilityTraitButton;
-        __weak IDCoordinator *coordinator = self.coordinator;
-        __weak UIButton *weakButton = button;
-        NSDictionary *cardModel = objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay));
-        [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-            UIButton *pressed = weakButton;
-            IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
-            BOOL opened = cardModel[@"request"] && [coordinator openCardRequest:cardModel[@"request"]];
-            pressed.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
-            if (!opened) UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [self.cardTapLayer addSubview:button]; [self.cardTapButtons addObject:button];
-    }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    if (recognizer != self.cardTap) return YES;
+    self.cardTapStartOffset = self.cardScroll.contentOffset.y;
+    return IDScrollTapAllowed(YES, self.cardScroll.dragging, self.cardScroll.decelerating,
+        self.cardTapStartOffset, self.cardTapStartOffset,
+        self.cardScroll.contentSize.height, self.cardScroll.bounds.size.height);
 }
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    if (scrollView == self.cardScroll) [self rebuildCardTapOverlay];
+- (void)cardTapped:(UITapGestureRecognizer *)recognizer {
+    if (!IDScrollTapAllowed(recognizer.state == UIGestureRecognizerStateEnded,
+        self.cardScroll.dragging, self.cardScroll.decelerating, self.cardTapStartOffset,
+        self.cardScroll.contentOffset.y, self.cardScroll.contentSize.height,
+        self.cardScroll.bounds.size.height)) return;
+    CGPoint point = [recognizer locationInView:self.cardScroll];
+    if (!CGRectContainsPoint(self.cardScroll.bounds, point)) return;
+    // Convert at recognition time, not before scrolling: retain the original request
+    // on each actual card, never a stale clipped overlay or an index into a new list.
+    for (UIView *view in self.cardStack.arrangedSubviews) {
+        if (![view isKindOfClass:IDCardView.class] || view.hidden) continue;
+        if (CGRectContainsPoint([view convertRect:view.bounds toView:self.cardScroll], point)) {
+            [(IDCardView *)view accessibilityActivate]; return;
+        }
+    }
 }
 - (CGFloat)rowHeight {
     CGFloat base = IDMiniControls ? 44 : 52;
@@ -115,7 +99,11 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width, row = [self rowHeight];
+    self.backgroundColor = UIColor.clearColor;
     self.glass.frame = self.bounds;
+    self.glass.effect = IDPanelBlur ? [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial] : nil;
+    self.glass.hidden = !IDPanelBlur && IDPanelOpacity == 0;
+    self.glass.backgroundColor = [UIColor.systemBackgroundColor colorWithAlphaComponent:IDPanelOpacity];
     self.heading.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold] maximumPointSize:22];
     self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
     self.hint.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
@@ -151,9 +139,10 @@
     CGFloat scrollWidth = IDGridLayout ? width : MAX(width, x + 6);
     self.stack.frame = CGRectMake(0, 0, scrollWidth, height);
     self.scroll.contentSize = CGSizeMake(scrollWidth, height);
-    // Rebuild after explicit frames exist; these sibling buttons are the only
-    // card hit targets and are never hidden under native list content.
-    [self rebuildCardTapOverlay];
+    // Content guides derive contentSize from the multiline card constraints.
+    // Resolve after assigning the bounded viewport frame, including width changes.
+    [self.cardScroll setNeedsLayout]; [self.cardScroll layoutIfNeeded];
+    [self.cardStack layoutIfNeeded];
     [self.coordinator updatePanelGeometry];
 }
 - (void)pinGesture:(UILongPressGestureRecognizer *)recognizer {

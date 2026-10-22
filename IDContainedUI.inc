@@ -1,4 +1,6 @@
 - (void)dropCards {
+    // A snapshot rebuild must not retarget a finger already down to a new request.
+    self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.builtCardCount = 0;
     // Clear accessible strings as well as removing labels; no stale preview in AX.
     for (UIView *view in self.cardStack.arrangedSubviews.copy) {
@@ -22,6 +24,7 @@
     return [NSString stringWithFormat:@"%lu 天前", (unsigned long)(seconds / 86400)];
 }
 - (void)showCards {
+    CGPoint previousOffset = self.cardScroll.contentOffset;
     [self dropCards];
     self.cardScroll.hidden = !IDContainedMode; self.cardNotice.hidden = !IDContainedMode;
     if (!IDContainedMode) return;
@@ -36,12 +39,12 @@
         heading.accessibilityTraits = UIAccessibilityTraitHeader;
         [self.cardStack addArrangedSubview:heading];
         for (NSDictionary *card in cards) {
-            UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]; shell.layer.cornerRadius = 16;
+            IDCardView *shell = [IDCardView new]; shell.layer.cornerRadius = 16;
             shell.userInteractionEnabled = YES;
             shell.translatesAutoresizingMaskIntoConstraints = NO;
             shell.accessibilityIdentifier = @"IDContainedCard";
             [shell.heightAnchor constraintGreaterThanOrEqualToConstant:64].active = YES;
-            shell.backgroundColor = [UIColor.secondaryLabelColor colorWithAlphaComponent:0.08];
+            shell.backgroundColor = [UIColor.systemBackgroundColor colorWithAlphaComponent:0.20];
             UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisVertical; content.spacing = 5;
             content.translatesAutoresizingMaskIntoConstraints = NO; content.userInteractionEnabled = NO; [shell addSubview:content];
             UIStackView *header = [UIStackView new]; header.spacing = 8; header.alignment = UIStackViewAlignmentCenter;
@@ -72,10 +75,9 @@
             shell.accessibilityTraits = UIAccessibilityTraitButton;
             shell.accessibilityHint = canOpen ? @"点按打开原生通知动作；若应用提供目标将进入对应会话。" : @"通知内容受保护，当前不可打开。";
             __weak IDCoordinator *weakCoordinator = self.coordinator;
-            __weak UIButton *weakShell = shell;
+            __weak IDCardView *weakShell = shell;
             NSDictionary *cardModel = card;
-            objc_setAssociatedObject(shell, @selector(rebuildCardTapOverlay), cardModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            [shell addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            shell.openAction = ^{
                 // First operation is visible feedback; native action/auth is secondary.
                 IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
                 BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
@@ -85,12 +87,9 @@
                 } else {
                     weakShell.accessibilityValue = @"已请求打开通知";
                 }
-            }] forControlEvents:UIControlEventTouchUpInside];
+            };
             UIAccessibilityCustomAction *openAction = [[UIAccessibilityCustomAction alloc] initWithName:@"打开通知" actionHandler:^BOOL(UIAccessibilityCustomAction *action) {
-                IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
-                BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
-                weakShell.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
-                return YES;
+                return [weakShell accessibilityActivate];
             }];
             shell.accessibilityCustomActions = @[openAction];
             [self.cardStack addArrangedSubview:shell]; rendered++;
@@ -112,9 +111,14 @@
     [self setNeedsLayout];
     [self layoutIfNeeded];
     CGFloat maximum = MAX(0, self.cardScroll.contentSize.height - self.cardScroll.bounds.size.height);
-    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, self.cardScroll.contentOffset.y), maximum));
+    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, previousOffset.y), maximum));
 }
 - (BOOL)cardsReadyForNativeHide {
+    // A clipped first page is not sufficient: all stacked content must be reachable.
+    CGFloat requiredHeight = CGRectGetMaxY(self.cardStack.frame) + 12;
+    if (!self.cardScroll.scrollEnabled || !self.cardScroll.panGestureRecognizer.enabled
+        || !isfinite(self.cardScroll.contentSize.height)
+        || self.cardScroll.contentSize.height + 1 < requiredHeight) return NO;
     if (!self.window || self.hidden || self.cardScroll.hidden || !self.builtCardCount
         || self.builtCardCount != self.coordinator.cards.count
         || self.cardScroll.bounds.size.height < 44 || self.cardScroll.bounds.size.width < 44
