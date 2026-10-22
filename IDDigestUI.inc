@@ -57,6 +57,9 @@
     for (UIButton *button in self.cardTapButtons) [button removeFromSuperview];
     [self.cardTapButtons removeAllObjects];
     self.cardTapLayer.frame = self.cardScroll.frame;
+    self.cardTapLayer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self bringSubviewToFront:self.cardTapLayer];
+    self.cardTapLayer.hidden = self.cardScroll.hidden;
     if (self.cardScroll.hidden) return;
     for (UIView *shell in self.cardStack.arrangedSubviews) {
         if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || shell.hidden) continue;
@@ -64,7 +67,12 @@
         frame = CGRectIntersection(frame, self.cardTapLayer.bounds);
         if (CGRectIsNull(frame) || frame.size.width < 44 || frame.size.height < 22) continue;
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.frame = frame; button.backgroundColor = UIColor.clearColor;
+        button.frame = frame; button.backgroundColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.16];
+        button.layer.cornerRadius = 12; button.layer.borderWidth = 1.5;
+        button.layer.borderColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.55].CGColor;
+        [button setTitle:@"打开通知" forState:UIControlStateNormal];
+        [button setTitleColor:UIColor.systemBlueColor forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
         button.accessibilityIdentifier = @"IslandDigestCardTapProbe";
         button.accessibilityLabel = shell.accessibilityLabel;
         button.accessibilityTraits = UIAccessibilityTraitButton;

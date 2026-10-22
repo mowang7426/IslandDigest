@@ -25,7 +25,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.5";
+    IDDiagnostics[@"version"] = @"0.2.6";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -110,7 +110,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.5.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.6.startup-pending";
 #endif
 }
 
@@ -809,6 +809,7 @@ static BOOL IDSupplementaryReady(id owner) {
     }
 }
 static BOOL IDOpenFeedback(NSString *message) {
+    IDStatus(@"card-tap-feedback", message);
     IDCoordinator *state = nil;
     // The panel is the only user-visible feedback surface; never include notification text.
     for (UIViewController *owner in IDOwners) {
@@ -844,6 +845,7 @@ static BOOL IDOpenFeedback(NSString *message) {
     }
 
     IDOpenFeedback(@"打开诊断：原生动作已找到");
+    IDStatus(@"card-tap-native-action-found", @"defaultAction 与原始 request 均存在；未生成 URL");
 
     /*
      * iOS 17 declares this callback on NCNotificationStructuredListViewController,
@@ -870,6 +872,7 @@ static BOOL IDOpenFeedback(NSString *message) {
         return NO;
     }
     IDOpenFeedback(@"打开诊断：原生接收器已找到；动作 ABI 已核验");
+    IDStatus(@"card-tap-native-receiver-verified", @"NCNotificationMasterList 与回调 ABI 已核验");
     IDOpenFeedback(@"打开诊断：动作与原生组件已找到；正在派发");
     self.pendingActionRequest = request;
     self.pendingAction = action;
@@ -895,6 +898,7 @@ static BOOL IDOpenFeedback(NSString *message) {
     }
     // This means the verified callback was invoked, not that the app launched.
     IDOpenFeedback(@"打开诊断：派发已接受；等待原生回调");
+    IDStatus(@"card-tap-dispatched", @"已向原生 notificationListComponent 派发；等待回调（不等同于 App 已启动）");
     return YES;
 }
 @end
