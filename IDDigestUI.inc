@@ -58,12 +58,22 @@
     self.collapseButton.accessibilityIdentifier = @"IslandDigestCollapse";
     [self.collapseButton addTarget:self action:@selector(collapseTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.expandedContent addSubview:self.collapseButton];
-    self.capsuleButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.capsuleButton setImage:[UIImage systemImageNamed:@"bell.badge.fill"] forState:UIControlStateNormal];
-    self.capsuleButton.titleLabel.font = [UIFont monospacedDigitSystemFontOfSize:17 weight:UIFontWeightSemibold];
+    // Custom legacy content avoids themed system-button fills and linked/underlined titles.
+    self.capsuleButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.capsuleButton.configuration = nil;
+    [self.capsuleButton setImage:[[UIImage systemImageNamed:@"bell.badge.fill"
+        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold]]
+        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
+    self.capsuleButton.tintColor = UIColor.labelColor;
+    self.capsuleButton.titleLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
     self.capsuleButton.titleLabel.adjustsFontSizeToFitWidth = YES;
-    self.capsuleButton.backgroundColor = UIColor.secondarySystemBackgroundColor;
-    self.capsuleButton.layer.cornerRadius = 24;
+    self.capsuleButton.titleLabel.minimumScaleFactor = 0.75;
+    self.capsuleButton.contentEdgeInsets = UIEdgeInsetsMake(6, 8, 6, 8);
+    self.capsuleButton.backgroundColor = UIColor.clearColor;
+    self.capsuleButton.opaque = NO;
+    self.capsuleButton.layer.backgroundColor = UIColor.clearColor.CGColor;
+    self.capsuleButton.layer.shadowOpacity = 0;
+    self.capsuleButton.adjustsImageWhenHighlighted = YES;
     self.capsuleButton.accessibilityIdentifier = @"IslandDigestCapsule";
     self.capsuleButton.accessibilityHint = @"点按恢复完整面板；不会打开或删除通知";
     [self.capsuleButton addTarget:self action:@selector(collapseTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -91,6 +101,13 @@
     self.capsuleButton.enabled = YES; // In-flight taps are ignored by the state machine.
     self.capsuleButton.accessibilityElementsHidden = !compact || moving;
     self.collapseButton.enabled = !moving;
+    // Compact mode never inherits expanded-panel blur/opacity, even during animation.
+    self.glass.hidden = compact || (!IDPanelBlur && IDPanelOpacity == 0);
+    self.glass.effect = compact ? nil : (IDPanelBlur ? [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial] : nil);
+    self.glass.backgroundColor = compact ? UIColor.clearColor : [UIColor.systemBackgroundColor colorWithAlphaComponent:IDPanelOpacity];
+    self.backgroundColor = UIColor.clearColor;
+    self.layer.backgroundColor = UIColor.clearColor.CGColor;
+    self.layer.shadowOpacity = 0;
 }
 - (void)clearTapped { [self.coordinator beginClear]; }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
@@ -153,9 +170,7 @@
     CGFloat width = contentSize.width, row = [self rowHeight];
     self.backgroundColor = UIColor.clearColor;
     self.glass.frame = self.bounds;
-    self.glass.effect = IDPanelBlur ? [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial] : nil;
-    self.glass.hidden = !IDPanelBlur && IDPanelOpacity == 0;
-    self.glass.backgroundColor = [UIColor.systemBackgroundColor colorWithAlphaComponent:IDPanelOpacity];
+    [self updateCollapsePresentation];
     self.heading.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold] maximumPointSize:22];
     self.detail.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
     self.hint.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
@@ -210,7 +225,16 @@
     CGPoint offset = self.scroll.contentOffset;
     for (UIView *view in self.stack.subviews.copy) [view removeFromSuperview];
     NSUInteger total = 0; for (IDGroup *group in groups) total += group.count;
-    [self.capsuleButton setTitle:[NSString stringWithFormat:@"  %lu", (unsigned long)total] forState:UIControlStateNormal];
+    NSString *compactCount = total > 999 ? @"999+" : [NSString stringWithFormat:@"%lu", (unsigned long)total];
+    NSString *capsuleTitle = [@"  " stringByAppendingString:compactCount];
+    NSDictionary *titleAttributes = @{NSForegroundColorAttributeName: UIColor.labelColor,
+        NSUnderlineStyleAttributeName: @0, NSFontAttributeName: self.capsuleButton.titleLabel.font};
+    [self.capsuleButton setAttributedTitle:[[NSAttributedString alloc] initWithString:capsuleTitle attributes:titleAttributes]
+        forState:UIControlStateNormal];
+    NSMutableDictionary *highlightAttributes = [titleAttributes mutableCopy];
+    highlightAttributes[NSForegroundColorAttributeName] = [UIColor.labelColor colorWithAlphaComponent:0.6];
+    [self.capsuleButton setAttributedTitle:[[NSAttributedString alloc] initWithString:capsuleTitle attributes:highlightAttributes]
+        forState:UIControlStateHighlighted];
     self.capsuleButton.accessibilityLabel = [NSString stringWithFormat:@"通知面板已折叠，共 %lu 条通知，点按展开", (unsigned long)total];
     self.detail.text = IDShowCounts ? [NSString stringWithFormat:@"%lu 个应用 · %lu 条", (unsigned long)groups.count, (unsigned long)total] : @"保留原生通知操作";
     NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];

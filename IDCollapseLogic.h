@@ -19,8 +19,8 @@ static inline IDPanelState IDPanelComplete(IDPanelState state) {
 }
 /* Same top/trailing anchor as expanded; actual constraints, not scaled hit bounds. */
 static inline IDPanelRect IDPanelCapsule(IDPanelRect expanded) {
-    double width = fmin(132, fmax(0, expanded.width));
-    double height = fmin(48, fmax(0, expanded.height));
+    double width = fmin(80, fmax(0, expanded.width));
+    double height = fmin(44, fmax(0, expanded.height));
     return (IDPanelRect){expanded.x + expanded.width - width, expanded.y, width, height};
 }
 static inline bool IDPanelCapsuleReachable(bool mounted, bool enabled, double width, double height) {
