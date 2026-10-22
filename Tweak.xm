@@ -29,7 +29,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.0";
+    IDDiagnostics[@"version"] = @"0.3.1";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -118,7 +118,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.0.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.1.startup-pending";
 #endif
 }
 

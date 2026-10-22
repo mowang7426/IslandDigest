@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.3.0'
+assert info['CFBundleVersion'] == '0.3.1'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -87,8 +87,8 @@ for key in ('PanelBackgroundOpacity', 'PanelBlur'):
     assert f'@"{key}"' in tweak and f'@"{key}"' in prefs
 assert 'IDPanelBlur = IDPref(@"PanelBlur", NO)' in tweak
 assert 'IDNumberOption(@"PanelBackgroundOpacity", 0, 0, 100) / 100.0' in tweak
-assert 'self.glass.effect = IDPanelBlur ?' in ui and ': nil;' in ui
-assert 'self.glass.hidden = !IDPanelBlur && IDPanelOpacity == 0' in ui
+assert 'self.glass.effect = compact ? nil : (IDPanelBlur ?' in ui
+assert 'self.glass.hidden = compact || (!IDPanelBlur && IDPanelOpacity == 0)' in ui
 assert 'colorWithAlphaComponent:0.20' in ui_contained
 assert 'systemBlueColor' not in ui and 'systemGreenColor' not in ui
 feedback = tweak.split('static BOOL IDOpenFeedback(NSString *message) {', 1)[1].split('\n}', 1)[0]

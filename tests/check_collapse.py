@@ -33,4 +33,29 @@ assert 'cardTapLayer' not in t + u and 'hitTest:' not in u
 for method in ('endAppearance', 'recover'):
     body = t.split(f'- (void){method} {{', 1)[1].split('\n}', 1)[0]
     assert '[self cancelCollapse]' in body
-print('PASS 0.3.0 collapse ownership, compact constraints, AX/ReduceMotion, native hide and adaptive three-column contracts')
+# Real compact geometry is shared with the executable C test, not a scale transform.
+logic = (r/'IDCollapseLogic.h').read_text()
+assert 'double width = fmin(80,' in logic and 'double height = fmin(44,' in logic
+for key in ('UIButtonTypeCustom', 'self.capsuleButton.configuration = nil',
+            'self.capsuleButton.backgroundColor = UIColor.clearColor',
+            'self.capsuleButton.layer.backgroundColor = UIColor.clearColor.CGColor',
+            'self.capsuleButton.layer.shadowOpacity = 0',
+            'self.glass.hidden = compact ||', 'self.glass.effect = compact ? nil :',
+            'NSUnderlineStyleAttributeName: @0', 'total > 999 ? @"999+"',
+            '共 %lu 条通知', 'forState:UIControlStateHighlighted'):
+    assert key in u, key
+assert 'secondarySystemBackgroundColor' not in u
+# Loader registration stays a standard PSLinkCell, never custom inset/image sizing.
+import plistlib, struct
+entry = plistlib.loads((r/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
+assert entry == {'bundle':'IslandDigestPrefs', 'cell':'PSLinkCell', 'detail':'IDPrefsController',
+                 'label':'灵屿通知', 'icon':'IslandDigest.png', 'isController':True}
+for folder in ('layout/Library/PreferenceLoader/Preferences', 'prefs/Resources'):
+    for suffix, size in (('',29), ('@2x',58), ('@3x',87)):
+        image = (r/folder/f'IslandDigest{suffix}.png').read_bytes()
+        assert image[:8] == b'\x89PNG\r\n\x1a\n'
+        assert struct.unpack('>II',image[16:24]) == (size,size)
+info = plistlib.loads((r/'prefs/Resources/Info.plist').read_bytes())
+assert info['CFBundleIconFiles'] == ['IslandDigest']
+assert all(key not in p for key in ('setIndentationLevel:', 'setSeparatorInset:', 'setLayoutMargins:'))
+print('PASS 0.3.1 compact 80x44 hit bounds, clear/no-blur appearance, bounded title/full AX count, 29pt entry scales and retained collapse contracts')

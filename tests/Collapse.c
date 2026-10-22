@@ -14,16 +14,20 @@ int main(void) {
         for (int height = 0; height <= 700; height += 7) {
             IDPanelRect expanded = {17, 220, width, height};
             IDPanelRect c = IDPanelCapsule(expanded);
-            assert(c.width <= 132 && c.height <= 48 && c.width >= 0 && c.height >= 0);
+            assert(c.width <= 80 && c.height <= 44 && c.width >= 0 && c.height >= 0);
             assert(c.y == expanded.y && c.x + c.width == expanded.x + expanded.width);
             assert(c.width <= expanded.width && c.height <= expanded.height);
             assert(IDPanelCapsuleReachable(1,1,c.width,c.height) == (width >= 44 && height >= 44));
         }
     }
-    assert(!IDPanelCapsuleReachable(0,1,132,48));
-    assert(!IDPanelCapsuleReachable(1,0,132,48));
-    assert(!IDPanelCapsuleReachable(1,1,NAN,48));
-    assert(!IDPanelCapsuleReachable(1,1,132,INFINITY));
+    IDPanelRect normal = IDPanelCapsule((IDPanelRect){8,220,374,360});
+    assert(normal.x == 302 && normal.y == 220 && normal.width == 80 && normal.height == 44);
+    assert(!IDPanelCapsuleReachable(1,1,43,44));
+    assert(!IDPanelCapsuleReachable(1,1,80,43));
+    assert(!IDPanelCapsuleReachable(0,1,80,44));
+    assert(!IDPanelCapsuleReachable(1,0,80,44));
+    assert(!IDPanelCapsuleReachable(1,1,NAN,44));
+    assert(!IDPanelCapsuleReachable(1,1,80,INFINITY));
     for (int bits = 0; bits < 8; bits++) assert(IDPanelRetainedHide(bits&1,bits&2,bits&4) == (bits == 7));
     // Normal phones: THREE COLUMNS, not three visible rows. Narrow / AX font fallback.
     assert(IDExperienceGridColumns(359,1,3,1) == 3);

@@ -1,3 +1,20 @@
+# 灵屿通知 0.3.1 · MoWang
+
+基于 `feature/0.3.0-collapse` / `da49d32628e4e9c828b9ae6194d5f60920c5ca2a` 的叠加 PR；不合并、不推送 main。
+
+- 收起时真实外框由 132×48 改为 **80×44 点**，内部图标/文字约在 80×32 点视觉范围内；不是保留整块大面板再缩放。极窄窗口按可用空间限界，达不到 44 点点击尺寸时不隐藏原生列表。
+- 移除白色胶囊底：按钮使用 Custom、configuration=nil，UIView/CALayer 背景透明且无阴影；折叠态无论展开面板背景/磨砂设置如何，都禁用外层 glass 背景与 blur。保留铃铛和计数，中性动态 labelColor，15 点字，无下划线；按下仅图标/文字轻微变淡，不出现白色填充。不改壁纸或系统主题。
+- 计数显示 0–999，更多显示 999+，VoiceOver 始终读完整总数；仅压缩文案，不裁掉模型中的通知。折叠/恢复、动画/Reduce Motion、滚动位置、选择/置顶、通知更新、三列网格和所有安全门控沿用 0.3.0。
+- 设置入口仍是标准 PreferenceLoader `PSLinkCell`、无 cellClass/自定义缩进/边距。注册 `IslandDigest.png` 现在是 **29×29 像素 base / 58×58 @2x / 87×87 @3x**，在 Loader 相邻目录和偏好 bundle 中各保留一套，Info.plist 同步使用 IslandDigest。1024px 肖像 master 独立命名，不作为 entry 基图；无原始 JPEG 进入包。由同一用户肖像进行 Lanczos 重采样，不再靠给超大画布增加透明边解决缩进。
+
+**对齐证据与边界：**用户截图上行图像约 x12、文字 x109，下行图像约 x30、文字 x142；图标与文字都偏右，不能解释为只需缩小人物。0.3.0 注册的相邻 `IslandDigest.png` 和 bundle 同名图实际为 1024×1024，且没有匹配的 29 点 scale family；bundle 中另有 1024/120/180 混杂倍率。源码没有自定义入口行布局；官方 PreferenceLoader 的 Tweak.xm 把注册 entry 与源目录传给 `specifiersFromEntry:sourcePreferenceLoaderBundlePath:title:`，随后由 Preferences 布局。因此本次修正的是注册资源的逻辑尺寸/倍率及两处解析路径，不 hook Settings，也不修改“灵动监测”。1024 图被当前设备加载器如何归一化仍无法从截图证明，**29 点修正后是否与上行精确对齐仍需该设备新截图验证**；不能声称已真机验收。
+
+验证：既有源码合同、隐私/清理合同、生产 C 状态机/几何/小屏/可达性/网格测试均保留；新增透明无 blur/no-shadow、999+ 与完整 AX 文案、入口精确尺寸及标准注册合同。严格 deb 检查只允许明确 payload 和精确图标尺寸，继续验证双架构、最低系统、安装名、依赖及 SHA-256 CodeDirectory 页面，不绕过签名。macOS CI 打包不是 iOS 运行验证；未安装/注销/执行真实打开或删除通知。
+
+设备检查：打开通知中心，点标题栏收起，再点铃铛恢复；检查壁纸上没有白底、计数可读及 44 点点击区；有背景/磨砂设置时折叠也应透明。检查快速连点、折叠期间到达通知、999+、旋转/小屏、VoiceOver、Reduce Motion、原滚动与筛选位置。设置 App 完全关闭再打开，比较两行图标和标题；如仍偏移，请提供新版入口截图及 PreferenceLoader/主题版本，而非调整其他插件。
+
+以下为 0.3.0 及更早版本的历史记录。
+
 # 灵屿通知 0.3.0 · MoWang
 
 基于 `feature/0.2.9-scroll-transparent` / `cea44b4b12bd38481116cd53ab0360786421b4e2`，叠加 PR，不合并或推送 main。
