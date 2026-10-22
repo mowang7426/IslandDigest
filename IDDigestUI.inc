@@ -211,7 +211,7 @@
     [self.cardScroll setNeedsLayout]; [self.cardScroll layoutIfNeeded];
     [self.cardStack layoutIfNeeded];
     self.retainedLayoutReady = [self expandedCardsLayoutReady];
-    [self.coordinator updatePanelGeometry];
+    // Never call geometry fitting back from child layout (owner -> fitting -> layout cycle).
 }
 - (void)pinGesture:(UILongPressGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateBegan) return;

@@ -62,7 +62,7 @@
     if (!self.panel.isViewLoaded) return;
     IDDigestView *view = (IDDigestView *)self.panel.view;
     NSString *reason = nil;
-    @try { reason = [self clearUnavailableReason]; }
+    @try { reason = [self workAllowed] ? [self clearUnavailableReason] : @"通知界面不可用"; }
     @catch (NSException *exception) { reason = @"通知接口检查失败；已停用清理"; }
     BOOL busy = _clearGate.pending || _clearGate.dispatched;
     view.clearButton.enabled = !reason && !busy;

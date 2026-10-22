@@ -84,7 +84,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 - (PSSpecifier *)toggle:(NSString *)title key:(NSString *)key {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:self set:@selector(setValue:specifier:) get:@selector(valueForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
     [item setProperty:key forKey:@"key"];
-    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"])) forKey:@"default"];
+    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])) forKey:@"default"];
     return item;
 }
 - (PSSpecifier *)choice:(NSString *)title key:(NSString *)key values:(NSArray *)values titles:(NSArray *)titles {
@@ -112,11 +112,13 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSString *key = [specifier propertyForKey:@"key"];
     if ([key hasPrefix:@"Panel"] && ![key isEqualToString:@"PanelBlur"]) return @(IDNumberOption(key, [[specifier propertyForKey:@"default"] doubleValue],
         [[specifier propertyForKey:@"min"] doubleValue], [[specifier propertyForKey:@"max"] doubleValue]));
+    if ([key isEqualToString:@"TextPalette"]) return IDStringOption(key, @[@"cyanPurple", @"pinkOrange", @"whiteCyan"], @"cyanPurple");
+    if ([key isEqualToString:@"SolidText"]) return IDStringOption(key, @[@"label", @"white", @"black"], @"label");
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
     if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"three");
     if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption(key, @[@"mini", @"standard"], @"mini");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
-    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"])));
+    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
@@ -149,7 +151,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -157,7 +159,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.2 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.3 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
@@ -170,6 +172,11 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[self group:@"通透背景" footer:@"默认通透：外层背景 0 且磨砂关闭，不修改壁纸或系统视图。0 = 完全透明，100 = 完全不透明；磨砂可独立开启。卡片保留轻量语义底色以改善文字对比，文字和分类仍会覆盖壁纸。此设置不会开启通知预览或更改隐私门控。"]];
     [items addObject:[self slider:@"面板背景不透明度（0 透明 / 100 不透明）" key:@"PanelBackgroundOpacity" low:0 high:100 fallback:0 step:1]];
     [items addObject:[self toggle:@"磨砂背景（默认关闭）" key:@"PanelBlur"]];
+    [items addObject:[self group:@"通知文字颜色" footer:@"仅影响插件卡片的标题、副标题和正文；不修改系统文字、分类胶囊或隐私策略。渐变默认关闭，静态无动画。可选择纯白/纯黑搭配轻阴影；渐变不保证所有壁纸的对比度，复杂壁纸建议同时提高背景不透明度。保留 UIKit 多行、大字和 emoji 绘制；没有缓存通知文字图片。"]];
+    [items addObject:[self toggle:@"静态渐变文字（默认关闭）" key:@"GradientText"]];
+    [items addObject:[self choice:@"渐变配色" key:@"TextPalette" values:@[@"cyanPurple", @"pinkOrange", @"whiteCyan"] titles:@[@"青色 → 淡紫", @"粉色 → 暖橙", @"白色 → 青色"]]];
+    [items addObject:[self choice:@"纯色文字（关闭渐变时）" key:@"SolidText" values:@[@"label", @"white", @"black"] titles:@[@"跟随系统（默认）", @"纯白", @"纯黑"]]];
+    [items addObject:[self toggle:@"轻阴影增强对比（默认关闭）" key:@"TextShadow"]];
     [items addObject:[self group:@"面板位置与大小（单位：点）" footer:@"锁屏与通知中心共用。顶部偏移从窗口安全区与通知控制器的交集顶部向下计算；默认 220 点是保守预留，不是已验证的时钟避让，UIKit 安全区本身不含锁屏时钟。不会移动或读取时钟视图。如仍挡住时间，请增加顶部偏移。左右边距控制宽度；高度是上限，卡片少时自动缩小。旋转后按实际窗口重新限界，底部预留 110 点给快捷按钮；极小空间保留原生列表。拖动约每 120ms 合并更新，无需注销。"]];
     [items addObject:[self slider:@"顶部向下偏移（默认 220）" key:@"PanelTopOffset" low:0 high:420 fallback:220 step:10]];
     [items addObject:[self slider:@"左右边距（默认 8）" key:@"PanelSideInset" low:8 high:64 fallback:8 step:2]];
@@ -187,6 +194,8 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[PSSpecifier preferenceSpecifierNamed:@"管理置顶应用" target:self set:NULL get:NULL detail:IDPinnedAppsController.class cell:PSLinkCell edit:Nil]];
     [items addObject:[self group:@"每次打开通知中心" footer:@"默认每次打开显示全部。开启后仅在下次真正打开时恢复上次应用；关闭界面时仍先恢复全部原生通知。若该应用已无通知，自动回到全部。关键提醒不会因筛选而隐藏。"]];
     [items addObject:[self toggle:@"记住上次筛选的应用" key:@"RememberFilter"]];
+    [items addObject:[self group:@"性能诊断" footer:@"默认关闭。开启后记录单调时钟测量的 snapshot/render/refresh/disappear 次数及最大耗时（毫秒）；只记录阶段和数字，不含通知正文。慢任务超过 32ms 时最多每 5 秒一条日志。打开通知中心后刷新下方状态，可用于排查后台切换卡顿；这些计时不能替代真机帧率跟踪。"]];
+    [items addObject:[self toggle:@"性能计时（默认关闭）" key:@"PerformanceDiagnostics"]];
     [items addObject:[self group:@"运行状态 / 诊断" footer:[self diagnostics]]];
     PSSpecifier *refresh = [PSSpecifier preferenceSpecifierNamed:@"刷新运行状态" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     refresh.buttonAction = @selector(refreshStatus); [items addObject:refresh];
