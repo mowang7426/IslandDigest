@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.3.1'
+assert info['CFBundleVersion'] == '0.3.2'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -130,3 +130,26 @@ assert 'IslandDigestClear' in ui and 'clearButton.enabled = NO' in ui
 assert 'IDClearCancel(&_clearGate)' in clear and '[state cancelClear]' in tweak
 assert '#include "../IDClearLogic.h"' in (root/'tests/Clear.c').read_text()
 print('PASS clear source guardrails (not native behavior validation)')
+
+# 0.3.2: actual UIKit constraints, paired with the shared geometry C tests.
+assert 'IDExperienceCategoryGeometry([self rowHeight], IDMiniControls)' in ui
+for contract in (
+    'tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO',
+    'button.backgroundColor = UIColor.clearColor',
+    '[tile.heightAnchor constraintEqualToConstant:geometry.visualHeight]',
+    '[content.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor]',
+    '[content.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor]',
+    '[content.leadingAnchor constraintGreaterThanOrEqualToAnchor:tile.leadingAnchor constant:geometry.contentPadding]',
+    '[content.trailingAnchor constraintLessThanOrEqualToAnchor:tile.trailingAnchor constant:-geometry.contentPadding]',
+    '[badge setContentCompressionResistancePriority:UILayoutPriorityRequired',
+    '[name setContentHuggingPriority:UILayoutPriorityRequired',
+    'NSLineBreakByTruncatingTail', 'return MAX(44, MIN(80,'):
+    assert contract in ui, contract
+assert 'content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor' not in ui
+assert 'content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor' not in ui
+assert 'if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption' in prefs
+assert info['CFBundleShortVersionString'] == '0.3.2'
+assert 'Version: 0.3.2' in (root/'control').read_text()
+assert "'0.3.2', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
+assert 'IslandDigest-0.3.2.startup-pending' in tweak
+print('PASS 0.3.2 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')

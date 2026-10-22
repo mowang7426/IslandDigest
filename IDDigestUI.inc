@@ -244,8 +244,19 @@
         BOOL active = group ? [selected isEqualToString:group.identifier] : !selected;
         BOOL pinned = group && [pins containsObject:group.identifier];
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.layer.cornerRadius = IDMiniControls ? 13 : 17; button.layer.cornerCurve = kCACornerCurveContinuous; button.clipsToBounds = YES;
-        button.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9] : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
+        IDCategoryGeometry geometry = IDExperienceCategoryGeometry([self rowHeight], IDMiniControls);
+        button.backgroundColor = UIColor.clearColor;
+        UIView *tile = [UIView new]; tile.translatesAutoresizingMaskIntoConstraints = NO;
+        tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO;
+        tile.layer.cornerRadius = IDMiniControls ? 11 : 17;
+        tile.layer.cornerCurve = kCACornerCurveContinuous; tile.clipsToBounds = YES;
+        tile.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9] : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
+        [button addSubview:tile];
+        [NSLayoutConstraint activateConstraints:@[
+            [tile.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:geometry.insetX],
+            [tile.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-geometry.insetX],
+            [tile.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+            [tile.heightAnchor constraintEqualToConstant:geometry.visualHeight]]];
         UIColor *foreground = active ? UIColor.systemBackgroundColor : UIColor.labelColor;
         UIStackView *content = [UIStackView new]; content.axis = UILayoutConstraintAxisHorizontal;
         content.alignment = UIStackViewAlignmentCenter; content.spacing = IDGridLayout ? 2 : (IDMiniControls ? 4 : 6); content.userInteractionEnabled = NO;
@@ -258,6 +269,7 @@
         name.adjustsFontForContentSizeCategory = YES;
         name.lineBreakMode = NSLineBreakByTruncatingTail;
         [name setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+        [name setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
         [name.widthAnchor constraintGreaterThanOrEqualToConstant:0].active = YES;
         [name.widthAnchor constraintLessThanOrEqualToConstant:IDMiniControls ? 100 : 120].active = YES; [content addArrangedSubview:name];
         if (pinned) {
@@ -268,9 +280,17 @@
         if (IDShowCounts) {
             UILabel *badge = [UILabel new]; badge.text = count > 99 ? @"99+" : [NSString stringWithFormat:@"%lu", (unsigned long)count];
             badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold]; badge.textColor = foreground; badge.alpha = 0.75;
+            [badge setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+            [badge setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
             [content addArrangedSubview:badge];
         }
-        [NSLayoutConstraint activateConstraints:@[[content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor constant:IDGridLayout ? 5 : 10], [content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:IDGridLayout ? -5 : -10], [content.centerYAnchor constraintEqualToAnchor:button.centerYAnchor]]];
+        // Intrinsic icon/name/pin/count group, centered as a whole. Only the name
+        // yields at narrow widths; the count and pin keep their full fixed space.
+        [NSLayoutConstraint activateConstraints:@[
+            [content.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
+            [content.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor],
+            [content.leadingAnchor constraintGreaterThanOrEqualToAnchor:tile.leadingAnchor constant:geometry.contentPadding],
+            [content.trailingAnchor constraintLessThanOrEqualToAnchor:tile.trailingAnchor constant:-geometry.contentPadding]]];
         // Leave buttons enabled for pin actions even if filtering is unavailable.
         button.accessibilityIdentifier = group.identifier;
         button.accessibilityLabel = [NSString stringWithFormat:@"%@%@，%lu 条通知", pinned ? @"已置顶，" : @"", group ? group.name : @"全部", (unsigned long)count];
