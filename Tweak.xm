@@ -25,7 +25,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.6";
+    IDDiagnostics[@"version"] = @"0.2.7";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -110,7 +110,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.6.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.7.startup-pending";
 #endif
 }
 
@@ -134,6 +134,46 @@ static BOOL IDArgument(Class target, const char *name, unsigned int index, const
     BOOL matches = type && strcmp(type, expected) == 0;
     free(type);
     return matches;
+}
+
+/* Runtime encodings use `c` for the BOOL declared as `bool` in iOS 17 headers,
+ * while some builds expose the equivalent Objective-C spelling `B`.  Accept only
+ * this one scalar variation; every other slot remains position- and kind-checked. */
+static const char *IDUnqualifiedType(const char *type) {
+    if (!type) return NULL;
+    for (; *type && strchr("rnNoORV", *type); type++) {}
+    return type;
+}
+static BOOL IDObjectEncoding(const char *type) {
+    const char *unqualified = IDUnqualifiedType(type);
+    return unqualified && *unqualified == '@';
+}
+static BOOL IDBoolEncoding(const char *type) {
+    const char *unqualified = IDUnqualifiedType(type);
+    return unqualified && (*unqualified == 'c' || *unqualified == 'B');
+}
+static NSString *IDActionABIDiagnostic(id owner, id component, Method *outMethod) {
+    Class knownComponent = objc_getClass("NCNotificationMasterList");
+    if (!component) return @"原生接收器缺失";
+    if (!knownComponent || ![component isKindOfClass:knownComponent]) return @"原生组件类型不匹配";
+    SEL selector = sel_registerName("notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:");
+    Method method = class_getInstanceMethod(object_getClass(owner), selector);
+    if (outMethod) *outMethod = method;
+    if (!method) return @"原生动作选择器缺失";
+    if (method_getNumberOfArguments(method) != 8) return @"原生动作 ABI 参数数量不匹配";
+    const char *runtimeEncoding = method_getTypeEncoding(method);
+    if (!runtimeEncoding || !*runtimeEncoding) return @"原生动作 ABI 编码缺失";
+    char *returnType = method_copyReturnType(method);
+    BOOL returnOK = IDUnqualifiedType(returnType) && strcmp(IDUnqualifiedType(returnType), "v") == 0;
+    free(returnType);
+    if (!returnOK) return @"原生动作 ABI 返回值不匹配";
+    for (unsigned int index = 2; index <= 7; index++) {
+        char *argumentType = method_copyArgumentType(method, index);
+        BOOL valid = index == 5 ? IDBoolEncoding(argumentType) : IDObjectEncoding(argumentType);
+        free(argumentType);
+        if (!valid) return [NSString stringWithFormat:@"原生动作 ABI 第 %u 参数类型不匹配", index - 1];
+    }
+    return nil;
 }
 
 static id IDRead(id object, const char *name) {
@@ -855,24 +895,15 @@ static BOOL IDOpenFeedback(NSString *message) {
      * before objc_msgSend. No URL is manufactured and no notification text is logged.
      */
     const char *selectorName = "notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:";
-    Class ownerClass = object_getClass(self.owner);
-    Class componentClass = objc_getClass("NCNotificationMasterList");
     id component = IDRead(self.owner, "masterList");
-    Method executeMethod = class_getInstanceMethod(ownerClass, sel_registerName(selectorName));
-    BOOL abiOK = executeMethod && method_getNumberOfArguments(executeMethod) == 8
-        && strcmp(method_getTypeEncoding(executeMethod), "v@:@@@B@@") == 0
-        && IDArgument(ownerClass, selectorName, 2, "@")
-        && IDArgument(ownerClass, selectorName, 3, "@")
-        && IDArgument(ownerClass, selectorName, 4, "@")
-        && IDArgument(ownerClass, selectorName, 5, "B")
-        && IDArgument(ownerClass, selectorName, 6, "@")
-        && IDArgument(ownerClass, selectorName, 7, "@");
-    if (!componentClass || !component || object_getClass(component) != componentClass || !abiOK) {
-        IDOpenFeedback(@"打开诊断：原生组件或动作 ABI 不匹配");
+    NSString *abiDiagnostic = IDActionABIDiagnostic(self.owner, component, NULL);
+    if (abiDiagnostic) {
+        IDOpenFeedback([NSString stringWithFormat:@"打开诊断：%@", abiDiagnostic]);
+        IDStatus(@"card-tap-action-rejected", abiDiagnostic);
         return NO;
     }
     IDOpenFeedback(@"打开诊断：原生接收器已找到；动作 ABI 已核验");
-    IDStatus(@"card-tap-native-receiver-verified", @"NCNotificationMasterList 与回调 ABI 已核验");
+    IDStatus(@"card-tap-native-receiver-verified", @"NCNotificationMasterList（含已知子类）与运行时回调 ABI 已核验");
     IDOpenFeedback(@"打开诊断：动作与原生组件已找到；正在派发");
     self.pendingActionRequest = request;
     self.pendingAction = action;
