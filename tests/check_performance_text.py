@@ -35,4 +35,4 @@ assert 'IDContainedClearView(view)' in scrub and '.openAction = nil' in scrub
 assert 'view.accessibilityCustomActions = nil' in scrub
 assert 'removeFromSuperview' not in scrub
 assert 'dispatch_sync' not in s
-print('PASS 0.3.3 bounded layout, dismissal privacy scrub/action release, color-only cache and opt-in diagnostics contracts')
+print('PASS 0.3.4 bounded layout, dismissal privacy scrub/action release, color-only cache and opt-in diagnostics contracts')

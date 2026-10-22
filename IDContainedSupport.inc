@@ -20,7 +20,15 @@ static BOOL IDContainedPreviewAllowed(id request, UIViewController *owner) {
     if (!IDPreviewWhenUnlocked || !NSThread.isMainThread) return NO;
     UIApplication *application = UIApplication.sharedApplication;
     if (!application.protectedDataAvailable || application.applicationState == UIApplicationStateBackground) return NO;
-    if (!owner || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return NO;
+    if (!owner || !owner.isViewLoaded || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return NO;
+    // Early presentation is NOT proof of authentication. Verify the existing getter ABI.
+    Method auth = class_getInstanceMethod(object_getClass(owner), sel_registerName("isDeviceAuthenticated"));
+    char *authType = auth && method_getNumberOfArguments(auth) == 2 ? method_copyReturnType(auth) : NULL;
+    BOOL authKnown = IDBoolEncoding(authType);
+    free(authType);
+    BOOL authenticated = authKnown && ((BOOL (*)(id, SEL))objc_msgSend)(owner, sel_registerName("isDeviceAuthenticated"));
+    if (!IDContainedPrivacyGate(NSThread.isMainThread, authKnown, authenticated,
+        YES, application.protectedDataAvailable, YES, IDPreviewWhenUnlocked)) return NO;
     id content = IDRead(request, "content");
     id options = IDRead(request, "options");
     if (!content || !options) return NO;

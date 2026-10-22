@@ -16,6 +16,8 @@
 #import "IDScrollLogic.h"
 #import "IDCollapseLogic.h"
 #import "IDPerformanceLogic.h"
+#import "IDFirstFrameLogic.h"
+#import "IDPaletteLogic.h"
 static BOOL IDPerformanceDiagnostics = NO, IDGradientText = NO, IDTextShadow = NO;
 static NSString *IDTextPalette = @"cyanPurple", *IDSolidText = @"label";
 static double IDMonotonic(void) {
@@ -49,7 +51,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.3";
+    IDDiagnostics[@"version"] = @"0.3.4";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -66,7 +68,7 @@ static void IDLoadOptions(void) {
     IDReloadPreferences();
     IDGradientText = IDPref(@"GradientText", NO);
     IDTextShadow = IDPref(@"TextShadow", NO);
-    IDTextPalette = IDStringOption(@"TextPalette", @[@"cyanPurple", @"pinkOrange", @"whiteCyan"], @"cyanPurple");
+    IDTextPalette = IDStringOption(@"TextPalette", @[@"cyanPurple", @"pinkOrange", @"whiteCyan", @"cyanBluePurplePink", @"yellowOrangePinkPurple", @"whiteCyanBluePurple"], @"cyanPurple");
     IDSolidText = IDStringOption(@"SolidText", @[@"label", @"white", @"black"], @"label");
     IDPerformanceDiagnostics = IDPref(@"PerformanceDiagnostics", NO);
     IDEnabled = IDPref(@"Enabled", YES);
@@ -148,7 +150,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.3.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.4.startup-pending";
 #endif
 }
 
@@ -379,6 +381,11 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 - (void)refresh;
 - (void)updatePanelGeometry;
 - (void)beginAppearance;
+- (void)prepareFirstFrame;
+@property(nonatomic) BOOL firstFramePrepared;
+@property(nonatomic) BOOL firstRenderRecorded;
+@property(nonatomic) BOOL firstHideRecorded;
+@property(nonatomic) double appearanceStarted;
 - (void)endAppearance;
 - (void)togglePinnedIdentifier:(NSString *)identifier;
 - (void)selectIdentifier:(NSString *)identifier;
@@ -648,6 +655,10 @@ static BOOL IDSupplementaryReady(id owner) {
     [self.panel.view layoutIfNeeded];
     IDDigestView *digest = (IDDigestView *)self.panel.view;
     digest.retainedLayoutReady = [digest expandedCardsLayoutReady];
+    if (IDPerformanceDiagnostics && !self.firstRenderRecorded) {
+        self.firstRenderRecorded = YES;
+        IDDiagnostics[@"firstRenderMs"] = @((IDMonotonic() - self.appearanceStarted) * 1000);
+    }
     [self updateNativeListVisibility];
     [self updateClearButton];
     IDRecordPerformance(@"render", started);
@@ -702,10 +713,47 @@ static BOOL IDSupplementaryReady(id owner) {
 - (void)beginAppearance {
     if (self.active) return;
     self.dismissed = NO;
+    self.firstFramePrepared = NO;
+    self.firstRenderRecorded = NO; self.firstHideRecorded = NO;
+    self.appearanceStarted = IDMonotonic();
+    if (IDPerformanceDiagnostics) {
+        [IDDiagnostics removeObjectForKey:@"firstRenderMs"];
+        [IDDiagnostics removeObjectForKey:@"firstHideMs"];
+        IDDiagnostics[@"firstFramePhase"] = @"waiting-attached-owner";
+    }
     self.active = YES;
     self.openingPending = YES;
     id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
     self.desiredSelection = [desired isKindOfClass:NSString.class] && [desired length] ? desired : nil;
+}
+
+- (void)prepareFirstFrame {
+    // Do not force-load an owner, borrow another window, or reuse pre-lock strings.
+    UIViewController *owner = self.owner;
+    BOOL loaded = owner.isViewLoaded;
+    UIView *view = loaded ? owner.view : nil;
+    BOOL requested = IDEnabled && IDGrouping && IDContainedMode && IDHideNative;
+    if (!IDFirstFrameShouldPrepare(requested, NSThread.isMainThread, loaded,
+        view.window != nil, view.hidden || view.window.hidden, self.disabled,
+        self.updating, self.firstFramePrepared)) return;
+    self.firstFramePrepared = YES; // At most once per appearance, including failures.
+    if (IDPerformanceDiagnostics) IDDiagnostics[@"firstFramePhase"] = @"preparing-attached-owner";
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    @try {
+        [UIView performWithoutAnimation:^{
+            [self refresh]; // Current authenticated/redacted snapshot; normal equality/style caches.
+        }];
+    } @catch (NSException *exception) {
+        [self disable]; // Native restored by existing recovery/ownership path.
+    } @finally {
+        [CATransaction commit];
+    }
+    if (IDPerformanceDiagnostics) {
+        IDDiagnostics[@"firstFramePhase"] = self.hiddenNativeList
+            ? @"prepared-native-hidden" : @"prepared-native-retained";
+        IDStatus(@"first-frame-prepared", @"入场准备完成；时间不代表屏幕实际呈现或零闪烁证明");
+    }
 }
 
 - (void)endAppearance {
@@ -1064,12 +1112,20 @@ static BOOL IDOpenFeedback(NSString *message) {
     IDEnsureState(self);
     IDLog("owner loaded; panel deferred");
 }
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    if (!(IDEnabled && IDGrouping && IDContainedMode && IDHideNative)) return;
+    IDCoordinator *state = IDEnsureState(self);
+    [state beginAppearance];
+    [state prepareFirstFrame]; // Only an already loaded, attached owner can prepare.
+}
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     IDCoordinator *state = IDEnsureState(self);
     [state beginAppearance];
+    [state prepareFirstFrame]; // Synchronous fallback if earlier UIKit phases had no window.
     IDLog("owner appeared");
-    IDScheduleRefresh();
+    if (!state.firstFramePrepared) IDScheduleRefresh();
 }
 - (void)viewDidLayoutSubviews {
     %orig;
@@ -1110,6 +1166,20 @@ static BOOL IDOpenFeedback(NSString *message) {
 - (void)notificationListBaseComponentDidRemoveAll:(id)component {
     %orig;
     IDScheduleRefresh();
+}
+%end
+%end
+
+%group IDFirstFrame
+%hook NCNotificationStructuredListViewController
+// Public UIKit lifecycle (iOS 17 SDK addition, back-deployed by UIKit).
+// Installed only when the actual inherited runtime method/BOOL ABI is verified.
+- (void)viewIsAppearing:(BOOL)animated {
+    %orig;
+    if (!(IDEnabled && IDGrouping && IDContainedMode && IDHideNative)) return;
+    IDCoordinator *state = IDEnsureState(self);
+    [state beginAppearance];
+    [state prepareFirstFrame];
 }
 %end
 %end
@@ -1180,6 +1250,13 @@ static void IDInstallHooks(void) {
         %init(IDFilter);
     }
     %init(IDMain);
+    Method appearing = class_getInstanceMethod(owner, sel_registerName("viewIsAppearing:"));
+    char *appearingArgument = appearing && method_getNumberOfArguments(appearing) == 3
+        ? method_copyArgumentType(appearing, 2) : NULL;
+    BOOL earlyLifecycleSupported = IDMethod(owner, "viewIsAppearing:", "v", 3) && IDBoolEncoding(appearingArgument);
+    free(appearingArgument);
+    if (earlyLifecycleSupported) { %init(IDFirstFrame); }
+    IDDiagnostics[@"firstFrameLifecycleSupported"] = @(earlyLifecycleSupported);
     IDHooksInstalled = YES;
     IDDiagnostics[@"hooksInstalled"] = @YES;
     IDDiagnostics[@"filterAvailable"] = @(IDFilteringReady);
