@@ -29,7 +29,15 @@
     BOOL cardViewportVisible = digest.cardScroll.window && !digest.cardScroll.hidden
         && digest.cardScroll.bounds.size.height >= 44 && digest.cardScroll.bounds.size.width >= 44;
     BOOL cardsReady = [digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards];
-    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible && cardsReady;
+    const char *actionSelector = "notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:";
+    id actionComponent = IDRead(self.owner, "masterList");
+    Class actionComponentClass = objc_getClass("NCNotificationMasterList");
+    Method actionMethod = class_getInstanceMethod(object_getClass(self.owner), sel_registerName(actionSelector));
+    BOOL forwardingSupported = actionComponentClass && actionComponent
+        && object_getClass(actionComponent) == actionComponentClass && actionMethod
+        && method_getNumberOfArguments(actionMethod) == 8
+        && strcmp(method_getTypeEncoding(actionMethod), "v@:@@@B@@") == 0;
+    BOOL supported = compatible && separate && self.enumerationReliable && snapshotComplete && ownsOrUnclaimed && cardViewportVisible && cardsReady && forwardingSupported;
     BOOL shouldHide = IDContainedShouldHide(IDEnabled, IDGrouping, IDContainedMode, IDHideNative,
         self.active, self.disabled, supported, self.panel.view.window && !self.panel.view.hidden, self.cards.count);
     if (IDContainedMustRestore(self.hiddenNativeList != candidate, shouldHide)) [self restoreNativeList];
@@ -49,6 +57,7 @@
         : !self.enumerationReliable ? @"通知枚举未验证；原生列表保留"
         : !snapshotComplete ? @"卡片达到上限；保留原生列表以访问较早通知"
         : !ownsOrUnclaimed ? @"原生列表被其他面板持有；保留原生列表"
+        : !forwardingSupported ? @"原生打开动作接口不匹配；保留原生列表"
         : !compatible ? @"原生列表接口不匹配；保留原生列表"
         : !separate ? @"面板未独立挂载；保留原生列表"
         : !cardViewportVisible ? @"卡片可视空间不足；保留原生列表"

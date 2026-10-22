@@ -57,6 +57,9 @@
     for (UIButton *button in self.cardTapButtons) [button removeFromSuperview];
     [self.cardTapButtons removeAllObjects];
     self.cardTapLayer.frame = self.cardScroll.frame;
+    self.cardTapLayer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self bringSubviewToFront:self.cardTapLayer];
+    self.cardTapLayer.hidden = self.cardScroll.hidden;
     if (self.cardScroll.hidden) return;
     for (UIView *shell in self.cardStack.arrangedSubviews) {
         if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"] || shell.hidden) continue;
@@ -64,16 +67,27 @@
         frame = CGRectIntersection(frame, self.cardTapLayer.bounds);
         if (CGRectIsNull(frame) || frame.size.width < 44 || frame.size.height < 22) continue;
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.frame = frame; button.backgroundColor = UIColor.clearColor;
+        button.frame = frame; button.backgroundColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.16];
+        button.layer.cornerRadius = 12; button.layer.borderWidth = 1.5;
+        button.layer.borderColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.55].CGColor;
+        [button setTitle:@"打开通知" forState:UIControlStateNormal];
+        [button setTitleColor:UIColor.systemBlueColor forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
         button.accessibilityIdentifier = @"IslandDigestCardTapProbe";
         button.accessibilityLabel = shell.accessibilityLabel;
         button.accessibilityTraits = UIAccessibilityTraitButton;
         __weak IDCoordinator *coordinator = self.coordinator;
+        __weak UIButton *weakButton = button;
         NSDictionary *cardModel = objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay));
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            UIButton *pressed = weakButton;
+            [pressed setTitle:@"✓ 已收到点击" forState:UIControlStateNormal];
+            [pressed setTitleColor:UIColor.systemGreenColor forState:UIControlStateNormal];
+            pressed.backgroundColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.28];
+            pressed.layer.borderColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.8].CGColor;
             IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
             BOOL opened = cardModel[@"request"] && [coordinator openCardRequest:cardModel[@"request"]];
-            button.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
+            pressed.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
             if (!opened) UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
         }] forControlEvents:UIControlEventTouchUpInside];
         [self.cardTapLayer addSubview:button]; [self.cardTapButtons addObject:button];
