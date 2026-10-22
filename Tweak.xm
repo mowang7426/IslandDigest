@@ -348,6 +348,7 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic) CGFloat geometryPreferred;
 - (void)schedulePresentation;
 - (BOOL)workAllowed;
+- (CGRect)panelSafeBounds;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
 @property(nonatomic) BOOL overlay;
 @property(nonatomic) BOOL inserted;
@@ -652,20 +653,22 @@ static BOOL IDSupplementaryReady(id owner) {
     IDRecordPerformance(@"render", started);
 }
 
+- (CGRect)panelSafeBounds {
+    UIView *owner = self.owner.view;
+    UIWindow *window = owner.window;
+    CGRect safe = window ? UIEdgeInsetsInsetRect(window.bounds, window.safeAreaInsets)
+                         : UIEdgeInsetsInsetRect(owner.bounds, owner.safeAreaInsets);
+    if (window) safe = [owner convertRect:safe fromView:window];
+    safe = CGRectIntersection(owner.bounds, safe);
+    return CGRectIsNull(safe) || CGRectIsEmpty(safe) ? CGRectZero : safe;
+}
+
 - (void)updatePanelGeometry {
     if (![self workAllowed] || self.geometryUpdating || !self.panel.isViewLoaded
         || (IDPanelTransitioning(self.collapseState) && !self.collapseGeometryAllowed)) return;
     self.geometryUpdating = YES;
     @try {
-        UIView *owner = self.owner.view;
-        UIWindow *window = owner.window;
-        // Window safe bounds are independent of the notification owner's additional
-        // insets. Intersect after conversion: owner may not fill the window.
-        CGRect safe = window ? UIEdgeInsetsInsetRect(window.bounds, window.safeAreaInsets)
-                             : UIEdgeInsetsInsetRect(owner.bounds, owner.safeAreaInsets);
-        if (window) safe = [owner convertRect:safe fromView:window];
-        safe = CGRectIntersection(owner.bounds, safe);
-        if (CGRectIsNull(safe) || CGRectIsEmpty(safe)) safe = CGRectZero;
+        CGRect safe = [self panelSafeBounds];
         IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             IDPanelMaxHeight, IDPanelMaxHeight);
@@ -673,7 +676,6 @@ static BOOL IDSupplementaryReady(id owner) {
             || self.geometryRevision != IDOptionsRevision) {
             self.geometryPreferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
             self.geometrySafe = safe; self.geometryRevision = IDOptionsRevision; self.geometryCacheValid = YES;
-            [self schedulePresentation]; // At most one post-layout visibility validation per invalidation.
         }
         CGFloat preferred = self.geometryPreferred;
         IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
@@ -1077,10 +1079,11 @@ static BOOL IDOpenFeedback(NSString *message) {
         IDDiagnostics[@"visibleOwnerSeen"] = @YES;
         IDScheduleRefresh(); // Never insert UI synchronously from a layout callback.
     }
-    // No snapshot, Auto Layout fitting or full card/native validation in UIKit's layout hook.
-    // Geometry is cheap when unchanged; visibility checks occur on explicit model/render events.
-    if ([state workAllowed]) [state updatePanelGeometry];
-    else if (state.hiddenNativeList) [state restoreNativeList];
+    // Compare only safe bounds/revision here: no fitting, card traversal or layout recursion.
+    if ([state workAllowed]) {
+        if (!state.geometryCacheValid || state.geometryRevision != IDOptionsRevision
+            || !CGRectEqualToRect([state panelSafeBounds], state.geometrySafe)) [state schedulePresentation];
+    } else if (state.hiddenNativeList) [state restoreNativeList];
 }
 - (void)viewWillDisappear:(BOOL)animated {
     IDCoordinator *state = IDState(self);
