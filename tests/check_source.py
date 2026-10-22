@@ -21,9 +21,9 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.2.8'
+assert info['CFBundleVersion'] == '0.2.9'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
-assert 'UIButton *shell = [UIButton buttonWithType:UIButtonTypeCustom]' in ui_contained
+assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
 assert '打开诊断：点击已收到' in tweak
 assert 'NCNotificationMasterList' in tweak and 'IDRead(self.owner, "masterList")' in tweak
@@ -60,39 +60,36 @@ assert 'self.renderedRevision != IDOptionsRevision' in tweak
 assert 'previous.latest' in tweak and 'previous.hasCriticalAlert' in tweak
 assert 'IDMiniControls = [IDStringOption(@"CategoryStyle"' in tweak
 assert 'self.cardScroll.userInteractionEnabled = YES' in ui
-assert 'cardTapLayer' in ui and 'rebuildCardTapOverlay' in ui
-assert 'IslandDigestCardTapProbe' in ui
-# 0.2.8: a fully transparent, enabled hit target still dispatches the same action.
-overlay = ui.split('- (void)rebuildCardTapOverlay {', 1)[1].split('- (void)scrollViewDidScroll:', 1)[0]
-for required in (
-    'self.cardTapLayer.frame = self.cardScroll.frame',
-    'self.cardTapLayer.hidden = self.cardScroll.hidden',
-    '[shell convertRect:shell.bounds toView:self.cardTapLayer]',
-    'CGRectIntersection(frame, self.cardTapLayer.bounds)',
-    '[UIButton buttonWithType:UIButtonTypeCustom]',
-    'button.frame = frame; button.backgroundColor = UIColor.clearColor',
-    'button.enabled = YES; button.userInteractionEnabled = YES',
-    'button.accessibilityLabel = shell.accessibilityLabel',
-    'button.accessibilityTraits = UIAccessibilityTraitButton',
-    '[button addAction:[UIAction actionWithHandler:',
-    'forControlEvents:UIControlEventTouchUpInside',
-    'objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay))',
-    '[coordinator openCardRequest:cardModel[@"request"]]',
-    'pressed.accessibilityValue = opened ?',
-    'IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作")',
-    '[self.cardTapLayer addSubview:button]; [self.cardTapButtons addObject:button]',
-):
-    assert required in overlay, required
-for forbidden in ('systemBlueColor', 'systemGreenColor', 'setTitle:', 'setTitleColor:',
-                  'borderWidth', 'borderColor', 'titleLabel', 'pressed.backgroundColor',
-                  'button.alpha', 'button.hidden = YES', 'button.enabled = NO'):
-    assert forbidden not in overlay, forbidden
+# The only touch recognizer is attached to the actual scroll viewport.
+assert 'cardTapLayer' not in ui + tweak and 'rebuildCardTapOverlay' not in ui + tweak
+assert 'hitTest:' not in ui
+for required in ('[self.cardScroll addGestureRecognizer:self.cardTap]',
+    '[self.cardTap requireGestureRecognizerToFail:self.cardScroll.panGestureRecognizer]',
+    'self.cardTap.cancelsTouchesInView = NO', 'self.cardScroll.scrollEnabled = YES',
+    'self.cardScroll.canCancelContentTouches = YES', 'self.cardScroll.clipsToBounds = YES',
+    'self.cardScroll.showsVerticalScrollIndicator = YES', 'IDScrollTapAllowed(',
+    '[recognizer locationInView:self.cardScroll]',
+    '[view convertRect:view.bounds toView:self.cardScroll]',
+    '[(IDCardView *)view accessibilityActivate]'):
+    assert required in ui, required
+assert 'shouldRecognizeSimultaneously' not in ui
+assert 'forControlEvents:UIControlEventTouchUpInside' not in ui_contained
+assert 'shell.openAction = ^{' in ui_contained
+assert 'return [weakShell accessibilityActivate]' in ui_contained
+assert '- (BOOL)accessibilityActivate' in tweak and 'self.openAction();' in tweak
+for key in ('PanelBackgroundOpacity', 'PanelBlur'):
+    assert f'@"{key}"' in tweak and f'@"{key}"' in prefs
+assert 'IDPanelBlur = IDPref(@"PanelBlur", NO)' in tweak
+assert 'IDNumberOption(@"PanelBackgroundOpacity", 0, 0, 100) / 100.0' in tweak
+assert 'self.glass.effect = IDPanelBlur ?' in ui and ': nil;' in ui
+assert 'self.glass.hidden = !IDPanelBlur && IDPanelOpacity == 0' in ui
+assert 'colorWithAlphaComponent:0.20' in ui_contained
+assert 'systemBlueColor' not in ui and 'systemGreenColor' not in ui
 feedback = tweak.split('static BOOL IDOpenFeedback(NSString *message) {', 1)[1].split('\n}', 1)[0]
 assert 'IDStatus(@"card-tap-feedback", message)' in feedback
 assert 'cardNotice' not in feedback and 'IDCardFeedbackUntil' not in tweak
 assert '@"stage", @"reason"' in prefs, 'Settings must retain existing feedback diagnostics'
-print('PASS 0.2.8 transparent card hit targets, UIAction, no debug chrome, Settings diagnostics')
-assert 'return [super hitTest:point withEvent:event];' in ui
+print('PASS 0.2.9 native scroll/tap ownership, shared AX action, transparent defaults, Settings diagnostics')
 assert 'content.userInteractionEnabled = NO' in (root / 'IDContainedUI.inc').read_text()
 assert '打开诊断：点击已收到；正在检查原生动作' in (root / 'IDContainedUI.inc').read_text()
 assert 'accessibilityCustomActions' in (root / 'IDContainedUI.inc').read_text()
