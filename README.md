@@ -1,7 +1,8 @@
-# 灵屿通知 0.2.6 · MoWang
+# 灵屿通知 0.2.7 · MoWang
 
-基于 `feature/0.2.5-card-tap-overlay`。本版将每张插件卡片绑定到快照中的同一 `NCNotificationRequest`，点击先给出明显的“打开通知”按钮反馈，再仅通过 iOS 17 `NCNotificationStructuredListViewController` 的已核验 `notificationListComponent:requestsExecuteAction:forNotificationRequest:requestAuthentication:withParameters:completion:` 回调派发其 `defaultAction`；不生成 URL、不调用 `openURL`、不重挂系统视图。顶层按钮按当前窗口坐标在每次布局/滚动后重建，卡片本体也保留直接按钮路径。
+基于 `feature/0.2.6-native-forward`。本版修正 iOS 17 `bool` 运行时 `c` / Objective-C `B` 编码差异：仅在运行时方法参数数量、返回值、对象参数顺序和 BOOL 位置全部核验通过时派发 `defaultAction`，不再把等价编码误判为 ABI 不匹配；接收器必须是 `masterList` 的 `NCNotificationMasterList` 或已知子类。仍不生成 URL、不调用 `openURL`、不重挂系统视图。卡片点击反馈与既有命中路径保持不变。
 
+运行时诊断现在区分：原生接收器缺失、原生组件类型不匹配、原生动作选择器缺失、参数数量不匹配、返回值不匹配、各参数类型不匹配，以及通知缺少 `defaultAction`。隐藏原生列表继续 fail-closed：动作 ABI 未支持时 `nativeHideSupported=0` 且原生列表保留；只有同一安全动作路径被核验、卡片快照完整且布局可见时才隐藏。
 **0.2.4 验证边界：**已完成源码契约、回归纯 C 测试和包检查脚本；本环境未注入 Theos/CA_THEOS_SDKROOT，因此不能宣称 RootHide/rootless 实际构建成功，也未安装、注销、重启 SpringBoard 或做真机动作验收。真机测试时，点卡片后底部诊断必须在极短时间内变为“点击已收到”；若仍无变化，应继续检查面板视图层级/注入，而不是把问题归因于原生 action。原生动作成功仍取决于原始通知 payload；插件不能凭空保证进入 QQ 目标会话。
 **通知正文隐私边界：**“解锁时显示通知预览”默认关闭，只有用户明确开启后才为插件授权；卡片读取 title/subtitle/message 前必须在主线程、拥有者界面可见、`protectedDataAvailable` 且 request 的 content/options 均可用。锁定或受保护数据不可用时同步清空卡片及无障碍字符串。iOS 17 运行时头文件只给出不透明的 `contentPreviewSetting` 整数，仓库没有可验证的逐条枚举/有效策略映射，因此不猜值、不用 native view 可见性作权限。明确开启后可能无法保持每个 App 的“永不显示预览”语义；设置页对此警告。未开启、锁定或任一门控未知时保留“通知内容已隐藏”。不写正文到日志、偏好、网络。
 
