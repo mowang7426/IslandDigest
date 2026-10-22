@@ -28,6 +28,20 @@ static inline size_t IDExperienceColumns(double width, int grid) {
 static inline size_t IDExperienceRows(size_t entries, size_t columns) {
     return entries ? (entries + columns - 1) / columns : 1;
 }
+// Mini paints a smaller tile inside the unchanged accessible button bounds.
+// Shared by production constraints and portable geometry regression tests.
+typedef struct {
+    double hitHeight, insetX, insetY, visualHeight, contentPadding;
+} IDCategoryGeometry;
+static inline IDCategoryGeometry IDExperienceCategoryGeometry(double rowHeight, int mini) {
+    IDCategoryGeometry result;
+    result.hitHeight = rowHeight > 44 ? rowHeight : 44;
+    result.insetX = mini ? 4 : 0;
+    result.insetY = mini ? 4 : 0;
+    result.visualHeight = result.hitHeight - 2 * result.insetY;
+    result.contentPadding = 5;
+    return result;
+}
 static inline size_t IDExperienceVisibleRows(size_t rows, double availableHeight, double rowHeight) {
     size_t result = 1;
     for (size_t candidate = 2; candidate <= 3; candidate++) {

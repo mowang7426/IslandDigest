@@ -44,15 +44,15 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         info_path = prefs_base + "Info.plist"
         entry_path = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.plist"
         entry_icon = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.png"
-        icon_master = prefs_base + ("IslandDigest-master.png" if expected_version == "0.3.1" else "IslandDigest-icon.png")
-        icon_2x = prefs_base + ("IslandDigest@2x.png" if expected_version == "0.3.1" else "IslandDigest-icon@2x.png")
-        icon_3x = prefs_base + ("IslandDigest@3x.png" if expected_version == "0.3.1" else "IslandDigest-icon@3x.png")
+        icon_master = prefs_base + ("IslandDigest-master.png" if expected_version in ("0.3.1", "0.3.2") else "IslandDigest-icon.png")
+        icon_2x = prefs_base + ("IslandDigest@2x.png" if expected_version in ("0.3.1", "0.3.2") else "IslandDigest-icon@2x.png")
+        icon_3x = prefs_base + ("IslandDigest@3x.png" if expected_version in ("0.3.1", "0.3.2") else "IslandDigest-icon@3x.png")
         icon_bundle = prefs_base + "IslandDigest.png"
         required = {tweak_path, filter_path, prefs_path, info_path, entry_path, entry_icon,
                     icon_master, icon_2x, icon_3x, icon_bundle}
         entry_2x = prefix + "Library/PreferenceLoader/Preferences/IslandDigest@2x.png"
         entry_3x = prefix + "Library/PreferenceLoader/Preferences/IslandDigest@3x.png"
-        if expected_version == "0.3.1":
+        if expected_version in ("0.3.1", "0.3.2"):
             required.update((entry_2x, entry_3x))
         assert required <= paths.keys(), paths.keys()
         assert all(path in required or (path.startswith(prefs_base) and
@@ -68,7 +68,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
-        if expected_version == "0.3.1":
+        if expected_version in ("0.3.1", "0.3.2"):
             assert entry["icon"] == "IslandDigest.png" and entry["cell"] == "PSLinkCell"
             assert set(entry) == {"bundle", "cell", "detail", "label", "icon", "isController"}
             assert info["CFBundleIconFiles"] == ["IslandDigest"]
@@ -81,7 +81,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
             assert icon[:8] == b'\x89PNG\r\n\x1a\n'
             assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
             assert len(icon) > 1000, icon_path
-    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1"):
+    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2"):
         for key in (b"ContainedMode", b"HideNativeList", b"containedEnabled", b"hideNativeRequested",
                     b"nativeHideSupported", b"nativeHidden", b"nativeHideReason", b"previewPolicyReason",
                     b"cardsRendered", b"cardsRedacted"):
@@ -90,7 +90,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert b"AllowPreviewWhenUnlocked" in binary
         assert "Author: MoWang" in metadata
         assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
-    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1"):
+    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2"):
         for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
             assert key in binary and key in prefs_binary, ("missing layout contract", key)
         for selector in (b"cardsReadyForNativeHide", b"setContentInsetAdjustmentBehavior:", b"builtCardCount"):

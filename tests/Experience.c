@@ -36,6 +36,43 @@ int main(void) {
             }
         }
     }
+    // Actual production tile constants: 36pt mini visual inside >=44pt hit area.
+    for (int mini = 0; mini <= 1; mini++) {
+        for (int row = 0; row <= 80; row++) {
+            IDCategoryGeometry g = IDExperienceCategoryGeometry(row, mini);
+            assert(g.hitHeight >= 44);
+            assert(g.visualHeight + 2 * g.insetY == g.hitHeight);
+            assert(g.visualHeight >= 36);
+            for (int panel = 200; panel <= 1000; panel += 10) {
+                for (int scale = 10; scale <= 24; scale++) {
+                    size_t cols = IDExperienceGridColumns(panel, 1, 3, scale / 10.0);
+                    double cell = (panel - 16 - (cols - 1) * 6) / cols;
+                    double visual = cell - 2 * g.insetX;
+                    double available = visual - 2 * g.contentPadding;
+                    assert(cell >= 44 && available > 0);
+                    // Centered content constrained to the tile: short/long names,
+                    // counts off/99+, optional pin. Name alone yields space.
+                    for (int name = 0; name <= 150; name += 5) {
+                        for (int pin = 0; pin <= 1; pin++) {
+                            for (int badge = 0; badge <= 24; badge += 24) {
+                                double fixed = 18 + pin * 12 + (badge ? badge + 2 : 0) + 2;
+                                double nameWidth = name < available - fixed ? name : available - fixed;
+                                assert(nameWidth >= 0);
+                                double group = fixed + nameWidth;
+                                double left = (cell - group) / 2;
+                                assert(left >= g.insetX + g.contentPadding - 0.0001);
+                                assert(left + group <= cell - g.insetX - g.contentPadding + 0.0001);
+                                double delta = left + group / 2 - cell / 2;
+                                assert(delta > -0.0001 && delta < 0.0001);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert(IDExperienceCategoryGeometry(44, 1).visualHeight == 36);
+    assert(IDExperienceCategoryGeometry(52, 0).visualHeight == 52);
     puts("PASS real shared C ordering/layout logic; no iOS runtime claims");
     return 0;
 }
