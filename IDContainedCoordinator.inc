@@ -13,6 +13,7 @@
 }
 - (void)updateNativeListVisibility {
     if (!NSThread.isMainThread) return;
+    if (![self workAllowed]) { [self restoreNativeList]; return; }
     UIView *candidate = IDRead(self.owner, "masterListView");
     Class nativeClass = objc_getClass("NCNotificationListView");
     BOOL compatible = nativeClass && object_getClass(candidate) == nativeClass

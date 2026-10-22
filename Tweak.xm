@@ -15,6 +15,13 @@
 #import "IDLayoutLogic.h"
 #import "IDScrollLogic.h"
 #import "IDCollapseLogic.h"
+#import "IDPerformanceLogic.h"
+static BOOL IDPerformanceDiagnostics = NO, IDGradientText = NO, IDTextShadow = NO;
+static NSString *IDTextPalette = @"cyanPurple", *IDSolidText = @"label";
+static double IDMonotonic(void) {
+    struct timespec value; clock_gettime(CLOCK_MONOTONIC, &value);
+    return value.tv_sec + value.tv_nsec / 1e9;
+}
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
@@ -27,18 +34,41 @@ static NSInteger IDSortMode;
 static NSInteger IDGridColumns = 3;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
+static void IDRecordPerformance(NSString *stage, double started) {
+    if (!IDPerformanceDiagnostics) return;
+    double ms = (IDMonotonic() - started) * 1000;
+    NSString *countKey = [@"perfCount_" stringByAppendingString:stage];
+    NSString *maxKey = [@"perfMaxMs_" stringByAppendingString:stage];
+    IDDiagnostics[countKey] = @(MIN(1000000UL, [IDDiagnostics[countKey] unsignedIntegerValue] + 1));
+    IDDiagnostics[maxKey] = @(MAX(ms, [IDDiagnostics[maxKey] doubleValue]));
+    static double lastSlow;
+    if (ms >= 32 && IDMonotonic() - lastSlow >= 5) {
+        lastSlow = IDMonotonic();
+        NSLog(@"[IslandDigest performance] stage=%@ duration_ms=%.1f", stage, ms);
+    } // No notification text, bounded keys and rate-limited slow logs only.
+}
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.2";
+    IDDiagnostics[@"version"] = @"0.3.3";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
     IDDiagnostics[@"stage"] = stage;
     IDDiagnostics[@"reason"] = reason ?: @"";
+    static double lastWrite;
+    static NSString *lastStage, *lastReason;
+    BOOL repeated = [lastStage isEqualToString:stage] && [lastReason isEqualToString:reason ?: @""];
+    if (repeated && IDMonotonic() - lastWrite < 2) return;
+    lastWrite = IDMonotonic(); lastStage = [stage copy]; lastReason = [reason copy] ?: @"";
     [IDDiagnostics writeToFile:IDStatusPath atomically:YES];
 }
 static void IDLoadOptions(void) {
     IDReloadPreferences();
+    IDGradientText = IDPref(@"GradientText", NO);
+    IDTextShadow = IDPref(@"TextShadow", NO);
+    IDTextPalette = IDStringOption(@"TextPalette", @[@"cyanPurple", @"pinkOrange", @"whiteCyan"], @"cyanPurple");
+    IDSolidText = IDStringOption(@"SolidText", @[@"label", @"white", @"black"], @"label");
+    IDPerformanceDiagnostics = IDPref(@"PerformanceDiagnostics", NO);
     IDEnabled = IDPref(@"Enabled", YES);
     IDGrouping = IDPref(@"Grouping", YES);
     IDShowCounts = IDPref(@"ShowCounts", YES);
@@ -118,7 +148,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.2.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.3.startup-pending";
 #endif
 }
 
@@ -310,6 +340,14 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 - (void)cancelCollapse;
 - (void)finishCollapse;
 @property(nonatomic) BOOL geometryUpdating;
+@property(nonatomic) BOOL presentationPending;
+@property(nonatomic) NSUInteger presentationGeneration;
+@property(nonatomic) BOOL geometryCacheValid;
+@property(nonatomic) CGRect geometrySafe;
+@property(nonatomic) NSUInteger geometryRevision;
+@property(nonatomic) CGFloat geometryPreferred;
+- (void)schedulePresentation;
+- (BOOL)workAllowed;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
 @property(nonatomic) BOOL overlay;
 @property(nonatomic) BOOL inserted;
@@ -394,6 +432,7 @@ static void IDRedactContainedNow(void) {
     if (NSThread.isMainThread) redact(); else dispatch_async(dispatch_get_main_queue(), redact);
 }
 
+#include "IDTextStyle.inc"
 #include "IDDigestUI.inc"
 
 @implementation IDDigestController
@@ -533,6 +572,7 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (BOOL)applyFilter {
     if (!IDFilteringReady) return YES;
+    if (!self.applyingFilter && !self.filtered.count && (!self.selected || IDContainedMode)) return YES;
     if (self.applyingFilter) {
         self.filterReconcilePending = YES;
         return YES;
@@ -573,8 +613,28 @@ static BOOL IDSupplementaryReady(id owner) {
     return succeeded;
 }
 
+- (BOOL)workAllowed {
+    return IDPerformanceWorkAllowed(self.active, self.disabled, self.owner.isViewLoaded,
+        self.owner.viewIfLoaded.window != nil, self.owner.viewIfLoaded.hidden);
+}
+- (void)schedulePresentation {
+    if (!IDPerformanceEnqueue([self workAllowed], self.presentationPending)) return;
+    self.presentationPending = YES;
+    NSUInteger generation = self.presentationGeneration;
+    __weak IDCoordinator *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDCoordinator *state = weakSelf;
+        if (!state || generation != state.presentationGeneration) return;
+        state.presentationPending = NO;
+        if (![state workAllowed]) return;
+        [state updatePanelGeometry];
+        [state updateNativeListVisibility];
+    }); // One shot only; never requeue itself from layout.
+}
 - (void)render {
-    if (!self.panel.isViewLoaded) return;
+    if (![self workAllowed] || !self.panel.isViewLoaded) return;
+    double started = IDMonotonic();
+    self.geometryCacheValid = NO;
     if (IDPanelTransitioning(self.collapseState)) { self.renderAfterCollapse = YES; return; }
     // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
@@ -589,10 +649,11 @@ static BOOL IDSupplementaryReady(id owner) {
     digest.retainedLayoutReady = [digest expandedCardsLayoutReady];
     [self updateNativeListVisibility];
     [self updateClearButton];
+    IDRecordPerformance(@"render", started);
 }
 
 - (void)updatePanelGeometry {
-    if (self.geometryUpdating || !self.panel.isViewLoaded
+    if (![self workAllowed] || self.geometryUpdating || !self.panel.isViewLoaded
         || (IDPanelTransitioning(self.collapseState) && !self.collapseGeometryAllowed)) return;
     self.geometryUpdating = YES;
     @try {
@@ -608,7 +669,13 @@ static BOOL IDSupplementaryReady(id owner) {
         IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             IDPanelMaxHeight, IDPanelMaxHeight);
-        CGFloat preferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
+        if (!self.geometryCacheValid || !CGRectEqualToRect(safe, self.geometrySafe)
+            || self.geometryRevision != IDOptionsRevision) {
+            self.geometryPreferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
+            self.geometrySafe = safe; self.geometryRevision = IDOptionsRevision; self.geometryCacheValid = YES;
+            [self schedulePresentation]; // At most one post-layout visibility validation per invalidation.
+        }
+        CGFloat preferred = self.geometryPreferred;
         IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             preferred, IDPanelMaxHeight);
@@ -640,6 +707,11 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)endAppearance {
+    double started = IDMonotonic();
+    // Mark inactive BEFORE cancellation: no geometry fitting, rendering or eligibility scans.
+    self.active = NO; self.dismissed = YES;
+    self.presentationGeneration++; self.presentationPending = NO;
+    self.geometryCacheValid = NO;
     [self cancelCollapse];
     [self dropContainedContent];
     [self cancelClear];
@@ -647,8 +719,12 @@ static BOOL IDSupplementaryReady(id owner) {
     self.dismissed = YES;
     self.openingPending = NO;
     self.selected = nil; // actual native state must always be restored on disappearance.
-    if (!IDRememberFilter) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
-    [self resetFilter];
+    if (!IDRememberFilter) {
+        self.desiredSelection = nil;
+        if (IDPreferenceValue(@"DesiredApp")) IDWritePreference(@"DesiredApp", nil);
+    }
+    [self resetFilter]; // Restore actual native filter state, even on teardown.
+    IDRecordPerformance(@"disappear", started);
 }
 
 - (void)togglePinnedIdentifier:(NSString *)identifier {
@@ -746,6 +822,8 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)refresh {
+    if (![self workAllowed]) return;
+    double started = IDMonotonic();
     @try {
         if (_clearGate.pending && (self.clearRevision != IDOptionsRevision || self.clearDelegate != IDRead(self.owner, "delegate")
             || self.clearMaster != IDRead(self.owner, "masterList") || ![self clearAuthenticated])) [self cancelClear];
@@ -764,7 +842,9 @@ static BOOL IDSupplementaryReady(id owner) {
     }
     self.updating = YES;
     @try {
+        double snapshotStarted = IDMonotonic();
         NSArray<IDGroup *> *groups = [self snapshot];
+        IDRecordPerformance(@"snapshot", snapshotStarted);
         BOOL unchanged = self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
         for (NSUInteger index = 0; index < groups.count; index++) {
@@ -788,7 +868,8 @@ static BOOL IDSupplementaryReady(id owner) {
         if (self.openingPending) {
             self.openingPending = NO;
             self.selected = IDRememberFilter ? self.desiredSelection : nil;
-            if (IDContainedMode) self.groups = groups = [self snapshot];
+            if (IDContainedMode && !((!self.selected && !self.renderedSelection)
+                || [self.selected isEqualToString:self.renderedSelection])) self.groups = groups = [self snapshot];
             selectionExists = self.selected == nil;
             for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.selected]) selectionExists = YES;
         }
@@ -895,6 +976,7 @@ static BOOL IDSupplementaryReady(id owner) {
         [self disable];
     } @finally {
         self.updating = NO;
+        IDRecordPerformance(@"refresh", started);
     }
 }
 static BOOL IDOpenFeedback(NSString *message) {
@@ -995,10 +1077,10 @@ static BOOL IDOpenFeedback(NSString *message) {
         IDDiagnostics[@"visibleOwnerSeen"] = @YES;
         IDScheduleRefresh(); // Never insert UI synchronously from a layout callback.
     }
-    if (state.active) {
-        [state updatePanelGeometry];
-        [state updateNativeListVisibility];
-    }
+    // No snapshot, Auto Layout fitting or full card/native validation in UIKit's layout hook.
+    // Geometry is cheap when unchanged; visibility checks occur on explicit model/render events.
+    if ([state workAllowed]) [state updatePanelGeometry];
+    else if (state.hiddenNativeList) [state restoreNativeList];
 }
 - (void)viewWillDisappear:(BOOL)animated {
     IDCoordinator *state = IDState(self);
@@ -1142,6 +1224,12 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         IDLoadOptions();
+        [NSNotificationCenter.defaultCenter addObserverForName:UIContentSizeCategoryDidChangeNotification
+            object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *notification) {
+                IDOptionsRevision++;
+                for (id owner in IDOwners.allObjects) IDState(owner).geometryCacheValid = NO;
+                IDScheduleRefresh();
+            }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataWillBecomeUnavailable
             object:nil queue:nil usingBlock:^(NSNotification *notification) { IDRedactContainedNow(); }];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataDidBecomeAvailable

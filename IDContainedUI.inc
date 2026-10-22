@@ -3,10 +3,13 @@
     self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.builtCardCount = 0;
     self.retainedLayoutReady = NO;
-    // Clear accessible strings as well as removing labels; no stale preview in AX.
-    for (UIView *view in self.cardStack.arrangedSubviews.copy) {
+    // Scrub synchronously, but retain empty layout shells until the next visible render.
+    // Removing hundreds of active constraints during an interactive dismissal is avoidable.
+    for (UIView *view in self.cardStack.arrangedSubviews) {
         IDContainedClearView(view);
-        [self.cardStack removeArrangedSubview:view]; [view removeFromSuperview];
+        if ([view isKindOfClass:IDCardView.class]) ((IDCardView *)view).openAction = nil;
+        view.accessibilityCustomActions = nil;
+        view.hidden = YES;
     }
     self.cardNotice.text = nil;
 }
@@ -27,6 +30,9 @@
 - (void)showCards {
     CGPoint previousOffset = self.cardScroll.contentOffset;
     [self dropCards];
+    for (UIView *view in self.cardStack.arrangedSubviews.copy) {
+        [self.cardStack removeArrangedSubview:view]; [view removeFromSuperview];
+    }
     self.cardScroll.hidden = !IDContainedMode; self.cardNotice.hidden = !IDContainedMode;
     if (!IDContainedMode) return;
     IDCoordinator *state = self.coordinator;
@@ -61,8 +67,12 @@
             date.textAlignment = NSTextAlignmentRight; [header addArrangedSubview:date]; [content addArrangedSubview:header];
             for (NSString *key in @[@"title", @"subtitle", @"body"]) {
                 NSString *text = card[key]; if (!text.length) continue;
-                UILabel *line = [self cardLabel:text style:[key isEqualToString:@"title"] ? UIFontTextStyleHeadline : UIFontTextStyleBody
-                    color:[card[@"redacted"] boolValue] ? UIColor.secondaryLabelColor : UIColor.labelColor];
+                IDNotificationLabel *styled = [IDNotificationLabel new];
+                styled.text = text; styled.numberOfLines = 0;
+                styled.font = [UIFont preferredFontForTextStyle:[key isEqualToString:@"title"] ? UIFontTextStyleHeadline : UIFontTextStyleBody];
+                styled.adjustsFontForContentSizeCategory = YES; styled.translatesAutoresizingMaskIntoConstraints = NO;
+                styled.originalColor = [card[@"redacted"] boolValue] ? UIColor.secondaryLabelColor : UIColor.labelColor;
+                UILabel *line = styled;
                 [content addArrangedSubview:line];
             }
             [NSLayoutConstraint activateConstraints:@[
