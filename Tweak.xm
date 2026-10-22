@@ -14,6 +14,7 @@
 #import "IDContainedLogic.h"
 #import "IDLayoutLogic.h"
 #import "IDScrollLogic.h"
+#import "IDCollapseLogic.h"
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
@@ -23,11 +24,12 @@ static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 
 static CGFloat IDPanelOpacity = 0;
 static BOOL IDPanelBlur = NO;
 static NSInteger IDSortMode;
+static NSInteger IDGridColumns = 3;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.9";
+    IDDiagnostics[@"version"] = @"0.3.0";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -42,6 +44,8 @@ static void IDLoadOptions(void) {
     IDShowCounts = IDPref(@"ShowCounts", YES);
     IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", NO);
     IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
+    NSString *columns = IDStringOption(@"GridColumns", @[@"three", @"two", @"auto"], @"three");
+    IDGridColumns = [columns isEqualToString:@"two"] ? 2 : [columns isEqualToString:@"auto"] ? 0 : 3;
     IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
@@ -114,7 +118,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.9.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.0.startup-pending";
 #endif
 }
 
@@ -238,6 +242,14 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @end
 
 @interface IDDigestView : UIView <UIGestureRecognizerDelegate>
+@property(nonatomic, strong) UIView *expandedContent;
+@property(nonatomic, strong) UIButton *collapseButton;
+@property(nonatomic, strong) UIButton *capsuleButton;
+@property(nonatomic) CGSize expandedSize;
+@property(nonatomic) BOOL retainedLayoutReady;
+- (BOOL)expandedCardsLayoutReady;
+- (BOOL)capsuleReachable;
+- (void)updateCollapsePresentation;
 @property(nonatomic, strong) UIVisualEffectView *glass;
 @property(nonatomic, strong) UILabel *heading;
 @property(nonatomic, strong) UILabel *detail;
@@ -290,6 +302,13 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic, strong) NSLayoutConstraint *overlayTop;
 @property(nonatomic, strong) NSLayoutConstraint *overlayLeft;
 @property(nonatomic, strong) NSLayoutConstraint *overlayWidth;
+@property(nonatomic) IDPanelState collapseState;
+@property(nonatomic, strong) UIViewPropertyAnimator *collapseAnimator;
+@property(nonatomic) BOOL collapseGeometryAllowed;
+@property(nonatomic) BOOL renderAfterCollapse;
+- (void)toggleCollapsed;
+- (void)cancelCollapse;
+- (void)finishCollapse;
 @property(nonatomic) BOOL geometryUpdating;
 @property(nonatomic, strong) NSMutableSet<NSString *> *filtered;
 @property(nonatomic) BOOL overlay;
@@ -412,6 +431,7 @@ static BOOL IDSupplementaryReady(id owner) {
 
 #include "IDClearCoordinator.inc"
 #include "IDContainedCoordinator.inc"
+#include "IDCollapseCoordinator.inc"
 
 - (void)dealloc {
     UIView *native = _hiddenNativeList;
@@ -555,6 +575,7 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)render {
     if (!self.panel.isViewLoaded) return;
+    if (IDPanelTransitioning(self.collapseState)) { self.renderAfterCollapse = YES; return; }
     // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
     [(IDDigestView *)self.panel.view showCards];
@@ -564,12 +585,15 @@ static BOOL IDSupplementaryReady(id owner) {
     [self updatePanelGeometry];
     [self.owner.view layoutIfNeeded];
     [self.panel.view layoutIfNeeded];
+    IDDigestView *digest = (IDDigestView *)self.panel.view;
+    digest.retainedLayoutReady = [digest expandedCardsLayoutReady];
     [self updateNativeListVisibility];
     [self updateClearButton];
 }
 
 - (void)updatePanelGeometry {
-    if (self.geometryUpdating || !self.panel.isViewLoaded) return;
+    if (self.geometryUpdating || !self.panel.isViewLoaded
+        || (IDPanelTransitioning(self.collapseState) && !self.collapseGeometryAllowed)) return;
     self.geometryUpdating = YES;
     @try {
         UIView *owner = self.owner.view;
@@ -588,6 +612,13 @@ static BOOL IDSupplementaryReady(id owner) {
         IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             preferred, IDPanelMaxHeight);
+        IDDigestView *digest = (IDDigestView *)self.panel.view;
+        CGSize expandedSize = CGSizeMake(rect.width, rect.height);
+        if (!CGSizeEqualToSize(digest.expandedSize, expandedSize)) {
+            digest.expandedSize = expandedSize; digest.retainedLayoutReady = NO;
+            [digest setNeedsLayout];
+        }
+        if (IDPanelCompact(self.collapseState)) rect = IDPanelCapsule(rect);
         CGSize size = CGSizeMake(rect.width, rect.height);
         if (!CGSizeEqualToSize(self.panel.preferredContentSize, size)) self.panel.preferredContentSize = size;
         if (self.overlay) {
@@ -609,6 +640,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)endAppearance {
+    [self cancelCollapse];
     [self dropContainedContent];
     [self cancelClear];
     self.active = NO;
@@ -649,6 +681,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)recover {
+    [self cancelCollapse];
     [self dropContainedContent];
     [self cancelClear];
     if (self.recoveryAttempts >= 3) return;

@@ -18,8 +18,8 @@ int main(void) {
     assert(IDExperienceOrder(0,0,0,2,2,300,200,0,1) == -1);
     assert(IDExperienceOrder(0,0,0,2,2,100,200,0,1) == 1);
     // Bounds include small screens, landscape, tablet and capped large text.
-    assert(IDExperienceColumns(260,1) == 1);
-    assert(IDExperienceColumns(390,1) == 2);
+    assert(IDExperienceColumns(260,1) == 2);
+    assert(IDExperienceColumns(390,1) == 3);
     assert(IDExperienceColumns(768,1) == 3);
     assert(IDExperienceColumns(768,0) == 1);
     assert(IDExperienceRows(0,2) == 1);

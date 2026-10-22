@@ -113,6 +113,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if ([key hasPrefix:@"Panel"] && ![key isEqualToString:@"PanelBlur"]) return @(IDNumberOption(key, [[specifier propertyForKey:@"default"] doubleValue],
         [[specifier propertyForKey:@"min"] doubleValue], [[specifier propertyForKey:@"max"] doubleValue]));
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
+    if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"three");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
     return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"])));
 }
@@ -147,7 +148,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -155,7 +156,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.2.9 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.0 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
@@ -176,9 +177,10 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     resetLayout.buttonAction = @selector(resetPanelLayout); [items addObject:resetLayout];
     [items addObject:[self group:@"手动清理通知" footer:@"点击面板垃圾桶：选中应用只清理该应用；全部则处理全部应用。两种范围始终先确认，系统真实清除不可撤销。仅处理点击时的快照，新到通知不纳入。不自动/定时清理。关键、受保护、不可清理或保护能力未知的通知跳过；接口或解锁状态无法验证时按钮停用，原因显示在面板与诊断中。应用筛选不会扩大清理范围。"]];
     [items addObject:[self toggle:@"启用手动通知清理（始终确认）" key:@"EnableClearing"]];
-    [items addObject:[self group:@"面板布局与排序" footer:@"默认保留横向紧凑胶囊；网格最多显示三行，超出后在面板内部滚动。置顶应用总是优先，其余按所选方式排序；相同项使用固定应用标识打破平局。"]];
+    [items addObject:[self group:@"面板布局与排序" footer:@"默认保留横向紧凑胶囊；网格默认每行三个应用（不是强制三行）；小屏或较大辅助字体自动降为两列或一列，长名称截断，图标、计数及置顶操作保留。网格最多显示三行，超出后在面板内部滚动。置顶应用总是优先，其余按所选方式排序；相同项使用固定应用标识打破平局。"]];
     [items addObject:[self choice:@"分类视觉密度" key:@"CategoryStyle" values:@[@"mini", @"standard"] titles:@[@"迷你（默认，保留 44 点可访问点击区）", @"标准"]]];
     [items addObject:[self choice:@"显示布局" key:@"LayoutMode" values:@[@"compact", @"grid"] titles:@[@"紧凑横向胶囊（默认）", @"多行网格"]]];
+    [items addObject:[self choice:@"网格每行应用数" key:@"GridColumns" values:@[@"three", @"two", @"auto"] titles:@[@"三列（默认，小屏或大字自动降列）", @"两列（必要时降为一列）", @"自动（按宽度与字体选择）"]]];
     [items addObject:[self choice:@"应用排序" key:@"SortMode" values:@[@"recent", @"count", @"name"] titles:@[@"最近通知优先（默认）", @"通知数量从多到少", @"应用名称（本地语言）"]]];
     [items addObject:[self group:@"应用置顶" footer:@"长按应用胶囊可置顶 / 取消，带图钉标记；长按不会同时切换筛选。也可在下面用应用名称管理，无需输入应用标识。"]];
     [items addObject:[PSSpecifier preferenceSpecifierNamed:@"管理置顶应用" target:self set:NULL get:NULL detail:IDPinnedAppsController.class cell:PSLinkCell edit:Nil]];
