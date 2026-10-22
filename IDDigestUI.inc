@@ -67,12 +67,9 @@
         frame = CGRectIntersection(frame, self.cardTapLayer.bounds);
         if (CGRectIsNull(frame) || frame.size.width < 44 || frame.size.height < 22) continue;
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.frame = frame; button.backgroundColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.16];
-        button.layer.cornerRadius = 12; button.layer.borderWidth = 1.5;
-        button.layer.borderColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.55].CGColor;
-        [button setTitle:@"打开通知" forState:UIControlStateNormal];
-        [button setTitleColor:UIColor.systemBlueColor forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+        // Keep the full clipped card hit area without drawing debug chrome.
+        button.frame = frame; button.backgroundColor = UIColor.clearColor;
+        button.enabled = YES; button.userInteractionEnabled = YES;
         button.accessibilityIdentifier = @"IslandDigestCardTapProbe";
         button.accessibilityLabel = shell.accessibilityLabel;
         button.accessibilityTraits = UIAccessibilityTraitButton;
@@ -81,10 +78,6 @@
         NSDictionary *cardModel = objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay));
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
             UIButton *pressed = weakButton;
-            [pressed setTitle:@"✓ 已收到点击" forState:UIControlStateNormal];
-            [pressed setTitleColor:UIColor.systemGreenColor forState:UIControlStateNormal];
-            pressed.backgroundColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.28];
-            pressed.layer.borderColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.8].CGColor;
             IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
             BOOL opened = cardModel[@"request"] && [coordinator openCardRequest:cardModel[@"request"]];
             pressed.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
