@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
-static CGFloat IDCardFeedbackUntil = 0;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -25,7 +24,7 @@ static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.2.7";
+    IDDiagnostics[@"version"] = @"0.2.8";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -110,7 +109,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.2.7.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.2.8.startup-pending";
 #endif
 }
 
@@ -849,20 +848,9 @@ static BOOL IDSupplementaryReady(id owner) {
     }
 }
 static BOOL IDOpenFeedback(NSString *message) {
+    // Keep action diagnostics in Settings, not on notification cards or the panel.
     IDStatus(@"card-tap-feedback", message);
-    IDCoordinator *state = nil;
-    // The panel is the only user-visible feedback surface; never include notification text.
-    for (UIViewController *owner in IDOwners) {
-        state = IDState(owner);
-        if (state && state.panel.isViewLoaded && state.panel.view.window) {
-            IDDigestView *digest = (IDDigestView *)state.panel.view;
-            IDCardFeedbackUntil = CACurrentMediaTime() + 2.0;
-            digest.cardNotice.text = message;
-            UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
-            return YES;
-        }
-    }
-    return NO;
+    return YES;
 }
 
 - (BOOL)openCardRequest:(id)request {
