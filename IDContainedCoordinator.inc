@@ -68,6 +68,11 @@
     for (NSDictionary *card in self.cards) if ([card[@"redacted"] boolValue]) redacted++;
     IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? redacted : 0);
     IDDiagnostics[@"cardsLayoutReady"] = @(cardsReady);
+    // Geometry only, never notification text; helps verify real device content guides.
+    IDDiagnostics[@"cardsContentHeight"] = @(digest.cardScroll.contentSize.height);
+    IDDiagnostics[@"cardsViewportHeight"] = @(digest.cardScroll.bounds.size.height);
+    IDDiagnostics[@"cardsStackHeight"] = @(digest.cardStack.bounds.size.height);
+    IDDiagnostics[@"cardsScrollEnabled"] = @(digest.cardScroll.scrollEnabled && digest.cardScroll.panGestureRecognizer.enabled);
     if (IDContainedMode && digest.cardNotice) digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
 }
 - (void)dropContainedContent {

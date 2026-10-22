@@ -75,6 +75,12 @@ for required in ('[self.cardScroll addGestureRecognizer:self.cardTap]',
 assert 'shouldRecognizeSimultaneously' not in ui
 assert 'forControlEvents:UIControlEventTouchUpInside' not in ui_contained
 assert 'shell.openAction = ^{' in ui_contained
+assert 'CGPoint previousOffset = self.cardScroll.contentOffset' in ui_contained
+assert 'MIN(MAX(0, previousOffset.y), maximum)' in ui_contained
+assert 'self.cardScroll.contentSize.height + 1 < requiredHeight' in ui_contained
+assert 'self.cardTap.enabled = NO; self.cardTap.enabled = YES' in ui_contained
+for key in ('cardsContentHeight', 'cardsViewportHeight', 'cardsStackHeight', 'cardsScrollEnabled'):
+    assert f'@"{key}"' in prefs and f'@"{key}"' in (root/'IDContainedCoordinator.inc').read_text()
 assert 'return [weakShell accessibilityActivate]' in ui_contained
 assert '- (BOOL)accessibilityActivate' in tweak and 'self.openAction();' in tweak
 for key in ('PanelBackgroundOpacity', 'PanelBlur'):

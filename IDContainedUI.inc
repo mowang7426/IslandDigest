@@ -24,6 +24,7 @@
     return [NSString stringWithFormat:@"%lu 天前", (unsigned long)(seconds / 86400)];
 }
 - (void)showCards {
+    CGPoint previousOffset = self.cardScroll.contentOffset;
     [self dropCards];
     self.cardScroll.hidden = !IDContainedMode; self.cardNotice.hidden = !IDContainedMode;
     if (!IDContainedMode) return;
@@ -110,9 +111,14 @@
     [self setNeedsLayout];
     [self layoutIfNeeded];
     CGFloat maximum = MAX(0, self.cardScroll.contentSize.height - self.cardScroll.bounds.size.height);
-    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, self.cardScroll.contentOffset.y), maximum));
+    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, previousOffset.y), maximum));
 }
 - (BOOL)cardsReadyForNativeHide {
+    // A clipped first page is not sufficient: all stacked content must be reachable.
+    CGFloat requiredHeight = CGRectGetMaxY(self.cardStack.frame) + 12;
+    if (!self.cardScroll.scrollEnabled || !self.cardScroll.panGestureRecognizer.enabled
+        || !isfinite(self.cardScroll.contentSize.height)
+        || self.cardScroll.contentSize.height + 1 < requiredHeight) return NO;
     if (!self.window || self.hidden || self.cardScroll.hidden || !self.builtCardCount
         || self.builtCardCount != self.coordinator.cards.count
         || self.cardScroll.bounds.size.height < 44 || self.cardScroll.bounds.size.width < 44
