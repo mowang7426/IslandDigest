@@ -77,11 +77,17 @@
         button.accessibilityLabel = shell.accessibilityLabel;
         button.accessibilityTraits = UIAccessibilityTraitButton;
         __weak IDCoordinator *coordinator = self.coordinator;
+        __weak UIButton *weakButton = button;
         NSDictionary *cardModel = objc_getAssociatedObject(shell, @selector(rebuildCardTapOverlay));
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            UIButton *pressed = weakButton;
+            [pressed setTitle:@"✓ 已收到点击" forState:UIControlStateNormal];
+            [pressed setTitleColor:UIColor.systemGreenColor forState:UIControlStateNormal];
+            pressed.backgroundColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.28];
+            pressed.layer.borderColor = [UIColor.systemGreenColor colorWithAlphaComponent:0.8].CGColor;
             IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
             BOOL opened = cardModel[@"request"] && [coordinator openCardRequest:cardModel[@"request"]];
-            button.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
+            pressed.accessibilityValue = opened ? @"已请求打开通知" : @"打开通知不可用";
             if (!opened) UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
         }] forControlEvents:UIControlEventTouchUpInside];
         [self.cardTapLayer addSubview:button]; [self.cardTapButtons addObject:button];
