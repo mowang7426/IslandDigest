@@ -23,7 +23,7 @@ for key in ('IslandDigestCollapse', 'IslandDigestCapsule', 'self.capsuleButton.a
     assert key in u, key
 for key in ('panelCollapseState', 'retainedExpandedLayoutReady', 'capsuleReachable', 'capsuleHideReady'):
     assert f'@"{key}"' in n and f'@"{key}"' in p
-assert 'compact ? capsuleReady : (cardViewportVisible && cardsReady)' in n
+assert 'IDContainedRepresentationReady(compact, capsuleReady, cardViewportVisible, cardsReady)' in n
 assert 'digest.retainedLayoutReady && [digest expandedCardsLayoutReady]' in n
 assert 'IDExperienceGridColumns' in u and 'GridColumns' in t and 'GridColumns' in p
 assert 'NSLineBreakByTruncatingTail' in u and 'UILayoutPriorityDefaultLow' in u

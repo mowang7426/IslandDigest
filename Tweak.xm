@@ -242,6 +242,12 @@ static NSArray *IDItems(id object) {
 @end
 
 @class IDCoordinator;
+// A view owns only this weak lease, never the coordinator or notification data.
+@interface IDNativeHideLease : NSObject
+@property(nonatomic, weak) IDCoordinator *coordinator;
+@end
+@implementation IDNativeHideLease
+@end
 
 /* Card touch handling belongs exclusively to the scroll view recognizer.
  * VoiceOver activation uses the very same action block without synthesizing touch. */
@@ -277,6 +283,15 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, strong) UITapGestureRecognizer *cardTap;
 @property(nonatomic) CGFloat cardTapStartOffset;
 @property(nonatomic) NSUInteger builtCardCount;
+@property(nonatomic) BOOL nativeLayoutSignatureValid;
+@property(nonatomic) CGRect nativeLayoutBounds;
+@property(nonatomic) CGSize nativeViewportSize;
+@property(nonatomic) CGSize nativeContentSize;
+@property(nonatomic) CGSize nativeStackSize;
+@property(nonatomic, weak) UIWindow *nativeLayoutWindow;
+@property(nonatomic, weak) NSArray *nativeLayoutCards;
+@property(nonatomic) NSUInteger nativeLayoutCount;
+@property(nonatomic) BOOL nativeLayoutCompact;
 - (BOOL)cardsReadyForNativeHide;
 - (void)showCards;
 - (void)dropCards;
@@ -300,7 +315,11 @@ static NSArray *IDItems(id object) {
 @property(nonatomic) BOOL enumerationReliable;
 @property(nonatomic, weak) UIView *hiddenNativeList;
 @property(nonatomic) BOOL nativeWasHidden;
-@property(nonatomic, strong) NSObject *nativeHideToken;
+@property(nonatomic, strong) IDNativeHideLease *nativeHideToken;
+@property(nonatomic) BOOL nativeVisibilityPending;
+@property(nonatomic) BOOL nativeVisibilityUpdating;
+@property(nonatomic, weak) UIView *observedNativeList;
+- (void)scheduleNativeListVisibility;
 @property(nonatomic, copy) NSString *nativeHideReason;
 - (void)restoreNativeList;
 - (void)updateNativeListVisibility;
@@ -375,6 +394,7 @@ static NSArray *IDItems(id object) {
 static char IDCoordinatorKey;
 static char IDNativeHideOwnerKey;
 static NSHashTable *IDOwners;
+static __weak IDCoordinator *IDCurrentNativeOwner;
 static BOOL IDRefreshPending;
 static NSUInteger IDAppearanceEpoch;
 static BOOL IDFilteringReady;
@@ -415,10 +435,13 @@ static void IDScheduleRefresh(void) {
             if (![state workAllowed]) continue;
             activeCount++;
             UIView *native = IDRead(owner, "masterListView");
-            BOOL visible = [native isKindOfClass:UIView.class] && native.window == owner.viewIfLoaded.window;
+            BOOL visible = [native isKindOfClass:UIView.class] && native.window
+                && native.window == owner.viewIfLoaded.window && native.bounds.size.width > 0 && native.bounds.size.height > 0;
+            BOOL ownedHidden = native == state.hiddenNativeList && state.nativeHideToken
+                && objc_getAssociatedObject(native, &IDNativeHideOwnerKey) == state.nativeHideToken;
             UIView *ancestor = visible ? native : nil;
             for (NSUInteger depth = 0; ancestor && depth < 32; depth++, ancestor = ancestor.superview) {
-                if ((ancestor.hidden && ancestor != state.hiddenNativeList) || ancestor.alpha <= 0.01) visible = NO;
+                if ((ancestor.hidden && !(ancestor == native && ownedHidden)) || ancestor.alpha <= 0.01) visible = NO;
             }
             if (ancestor) visible = NO;
             if (native && !visible) continue;
@@ -431,6 +454,12 @@ static void IDScheduleRefresh(void) {
         IDDiagnostics[@"ownerCount"] = @(owners.count);
         IDDiagnostics[@"activeOwnerCount"] = @(activeCount);
         IDDiagnostics[@"selectedOwnerState"] = !selected ? @"not-visible" : bestRank == 2 ? @"visible-native" : @"visible-owner-unverified-native";
+        // Publish only one live hiding owner; release leases before the new owner claims.
+        IDCurrentNativeOwner = selected;
+        for (UIViewController *owner in owners) {
+            IDCoordinator *other = IDState(owner);
+            if (other != selected && other.hiddenNativeList) [other restoreNativeList];
+        }
         if (selected) [selected refresh];
     });
 }
@@ -489,8 +518,8 @@ static BOOL IDSupplementaryReady(id owner) {
     // A delayed dealloc must not restore a view already claimed by another owner.
     void (^restore)(void) = ^{
         if (native && token && objc_getAssociatedObject(native, &IDNativeHideOwnerKey) == token) {
-            native.hidden = original;
             objc_setAssociatedObject(native, &IDNativeHideOwnerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            native.hidden = original;
         }
     };
     if (NSThread.isMainThread) restore();
@@ -620,6 +649,18 @@ static BOOL IDSupplementaryReady(id owner) {
     return IDPerformanceWorkAllowed(self.active, self.disabled, self.owner.isViewLoaded,
         self.owner.viewIfLoaded.window != nil, self.owner.viewIfLoaded.hidden || self.owner.viewIfLoaded.window.hidden);
 }
+- (void)scheduleNativeListVisibility {
+    if (!IDContainedVisibilityEnqueue([self workAllowed], self.nativeVisibilityPending, self.nativeVisibilityUpdating)) return;
+    self.nativeVisibilityPending = YES;
+    NSUInteger generation = self.presentationGeneration;
+    __weak IDCoordinator *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IDCoordinator *state = weakSelf;
+        if (!state || generation != state.presentationGeneration) return;
+        state.nativeVisibilityPending = NO;
+        if ([state workAllowed]) [state updateNativeListVisibility];
+    }); // No fitting, refresh, rendering or self-requeue from this callback.
+}
 - (void)schedulePresentation {
     if (!IDPerformanceEnqueue([self workAllowed], self.presentationPending)) return;
     self.presentationPending = YES;
@@ -716,6 +757,7 @@ static BOOL IDSupplementaryReady(id owner) {
     // Mark inactive BEFORE cancellation: no geometry fitting, rendering or eligibility scans.
     self.active = NO; self.dismissed = YES;
     self.presentationGeneration++; self.presentationPending = NO;
+    self.nativeVisibilityPending = NO; self.observedNativeList = nil;
     self.geometryCacheValid = NO;
     [self cancelCollapse];
     [self dropContainedContent];
@@ -1084,6 +1126,12 @@ static BOOL IDOpenFeedback(NSString *message) {
     }
     // Compare only safe bounds/revision here: no fitting, card traversal or layout recursion.
     if ([state workAllowed]) {
+        id rawNative = IDRead(self, "masterListView");
+        UIView *native = [rawNative isKindOfClass:UIView.class] ? rawNative : nil;
+        if (native != state.observedNativeList || (state.hiddenNativeList && !state.hiddenNativeList.hidden)) {
+            state.observedNativeList = native;
+            [state scheduleNativeListVisibility]; // Identity/visibility only, not card traversal.
+        }
         if (!state.geometryCacheValid || state.geometryRevision != IDOptionsRevision
             || !CGRectEqualToRect([state panelSafeBounds], state.geometrySafe)) [state schedulePresentation];
     } else if (state.hiddenNativeList) [state restoreNativeList];
@@ -1113,6 +1161,27 @@ static BOOL IDOpenFeedback(NSString *message) {
 - (void)notificationListBaseComponentDidRemoveAll:(id)component {
     %orig;
     IDScheduleRefresh();
+}
+%end
+%end
+
+%group IDNativeVisibility
+%hook NCNotificationListView
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (!hidden && NSThread.isMainThread) {
+        IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
+        IDCoordinator *state = lease.coordinator;
+        if (state.hiddenNativeList == self && !state.nativeVisibilityUpdating)
+            [state scheduleNativeListVisibility];
+    }
+}
+- (void)layoutSubviews {
+    %orig;
+    IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
+    IDCoordinator *state = lease.coordinator;
+    if (state.hiddenNativeList == self && !self.hidden && !state.nativeVisibilityUpdating)
+        [state scheduleNativeListVisibility];
 }
 %end
 %end
@@ -1216,6 +1285,13 @@ static void IDInstallHooks(void) {
         %init(IDFilter);
     }
     %init(IDMain);
+    Class nativeListClass = objc_getClass("NCNotificationListView");
+    BOOL nativeVisibilityHooks = nativeListClass && [nativeListClass isSubclassOfClass:UIView.class]
+        && IDMethod(nativeListClass, "setHidden:", "v", 3)
+        && IDArgument(nativeListClass, "setHidden:", 2, "B")
+        && IDMethod(nativeListClass, "layoutSubviews", "v", 2);
+    if (nativeVisibilityHooks) { %init(IDNativeVisibility); }
+    IDDiagnostics[@"nativeVisibilityHooks"] = @(nativeVisibilityHooks);
     Class masterClass = objc_getClass("NCNotificationMasterList");
     BOOL masterEvents = IDOwnObjectEvent(masterClass, "insertNotificationRequest:")
         && IDOwnObjectEvent(masterClass, "modifyNotificationRequest:")
