@@ -12,7 +12,7 @@ assert 'IDWritePreference' in prefs and 'IDNotifyPreferencesChanged' in prefs
 assert 'com.local.islanddigest/changed' in tweak and 'com.local.islanddigest/changed' in shared
 assert 'com.local.islanddigest/retry' in tweak and 'com.local.islanddigest/retry' in prefs
 assert 'viewDidLayoutSubviews' in tweak and 'IDEnsureState(self)' in tweak
-assert 'allNotificationRequests' in tweak and 'filteredNotificationRequests' in tweak
+assert 'allNotificationRequests' in (root/'IDEnumerationAdapter.inc').read_text() and 'filteredNotificationRequests' in (root/'IDEnumerationAdapter.inc').read_text()
 assert 'containsUnmanagedContent:YES preventsUserDismissal:YES' in tweak
 assert 'while (' not in tweak, 'No unbounded polling loops'
 assert '@[@1, @3, @8, @20, @125]' in tweak
@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.3.3'
+assert info['CFBundleVersion'] == '0.3.5'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -131,7 +131,7 @@ assert 'IDClearCancel(&_clearGate)' in clear and '[state cancelClear]' in tweak
 assert '#include "../IDClearLogic.h"' in (root/'tests/Clear.c').read_text()
 print('PASS clear source guardrails (not native behavior validation)')
 
-# 0.3.3: actual UIKit constraints, paired with the shared geometry C tests.
+# 0.3.5: actual UIKit constraints, paired with the shared geometry C tests.
 assert 'IDExperienceCategoryGeometry([self rowHeight], IDMiniControls)' in ui
 for contract in (
     'tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO',
@@ -148,8 +148,8 @@ for contract in (
 assert 'content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor' not in ui
 assert 'content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor' not in ui
 assert 'if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption' in prefs
-assert info['CFBundleShortVersionString'] == '0.3.3'
-assert 'Version: 0.3.3' in (root/'control').read_text()
-assert "'0.3.3', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
-assert 'IslandDigest-0.3.3.startup-pending' in tweak
-print('PASS 0.3.3 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')
+assert info['CFBundleShortVersionString'] == '0.3.5'
+assert 'Version: 0.3.5' in (root/'control').read_text()
+assert "'0.3.5', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
+assert 'IslandDigest-0.3.5.startup-pending' in tweak
+print('PASS 0.3.5 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')

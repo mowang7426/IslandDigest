@@ -46,8 +46,10 @@ for key in ("ContainedMode", "HideNativeList", "containedEnabled", "hideNativeRe
 assert "snapshotComplete" in coordinator
 assert "IDNativeHideOwnerKey" in coordinator
 assert "cardViewportVisible" in coordinator and "bounds.size.height >= 44" in coordinator
-assert "depth > 8 || requests.count >= 4096" in main
-assert "reliable = IDCollectRequests(allRequests, requests, 0) && reliable" in main
+adapter = (root/"IDEnumerationAdapter.inc").read_text()
+assert "depth > 8" in adapter and "requests.count >= 4096" in adapter
+assert "IDEnumerationSnapshot(master, IDDiagnostics, &reliable)" in main
+assert "self.enumerationReliable = reliable;" in main
 
 # 0.1.9 rendering/layout regressions: check ordering and real-view fail-safe,
 # not merely the model count or a nonzero empty viewport.
