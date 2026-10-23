@@ -21,8 +21,8 @@ static BOOL IDEnumerationLooksLikeRequest(id value) {
     id section = IDEnumerationRead(value, "sectionIdentifier");
     id identifier = IDEnumerationRead(value, "notificationIdentifier");
     id timestamp = IDEnumerationRead(value, "timestamp");
-    return [section isKindOfClass:NSString.class] && section.length
-        && [identifier isKindOfClass:NSString.class] && identifier.length
+    return [section isKindOfClass:NSString.class] && [(NSString *)section length]
+        && [identifier isKindOfClass:NSString.class] && [(NSString *)identifier length]
         && [timestamp isKindOfClass:NSDate.class];
 }
 static BOOL IDEnumerationNativeCount(id object, NSUInteger *count) {
