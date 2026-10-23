@@ -146,12 +146,12 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 }
 - (NSString *)diagnostics {
     NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
-    if (!status) return @"未收到 SpringBoard 诊断。可能尚未加载、未启用插件注入、处于安全模式，或诊断文件不可读；这不是已确认的失败原因。请确认 Relaxin 的插件注入开启，并确认安装的是原生 RootHide 包。";
+    if (!status) return @"未收到 SpringBoard 诊断。可能尚未加载、未启用插件注入、处于安全模式，或诊断文件不可读；这不是已确认的失败原因。请确认当前越狱的插件注入开启，并确认安装的是原生 RootHide 包。";
     NSMutableArray *lines = [NSMutableArray new];
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"masterEventHooks", @"enumerationVisits", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     return [lines componentsJoinedByString:@"\n"];
 }
@@ -159,7 +159,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.3 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.5 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];

@@ -49,7 +49,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.3";
+    IDDiagnostics[@"version"] = @"0.3.5";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -148,7 +148,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.3.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.5.startup-pending";
 #endif
 }
 
@@ -214,10 +214,9 @@ static NSString *IDActionABIDiagnostic(id owner, id component, Method *outMethod
     return nil;
 }
 
+#include "IDEnumerationAdapter.inc"
 static id IDRead(id object, const char *name) {
-    SEL selector = sel_registerName(name);
-    if (!object || !IDMethod(object_getClass(object), name, "@", 2)) return nil;
-    return ((id (*)(id, SEL))objc_msgSend)(object, selector);
+    return IDEnumerationRead(object, name);
 }
 
 static NSArray *IDItems(id object) {
@@ -226,21 +225,6 @@ static NSArray *IDItems(id object) {
     if ([object isKindOfClass:[NSSet class]]) return [object allObjects];
     if ([object isKindOfClass:[NSOrderedSet class]]) return [object array];
     return @[];
-}
-
-static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger depth) {
-    if (!object) return YES;
-    if (depth > 8 || requests.count >= 4096) return NO;
-    if (IDMethod(object_getClass(object), "sectionIdentifier", "@", 2)) {
-        [requests addObject:object];
-        return YES;
-    }
-    BOOL collection = [object isKindOfClass:NSDictionary.class] || [object isKindOfClass:NSArray.class]
-        || [object isKindOfClass:NSSet.class] || [object isKindOfClass:NSOrderedSet.class];
-    if (!collection) return NO;
-    NSArray *items = [object isKindOfClass:NSDictionary.class] ? [object allValues] : IDItems(object);
-    for (id item in items) if (!IDCollectRequests(item, requests, depth + 1)) return NO;
-    return YES;
 }
 
 #include "IDClearSupport.inc"
@@ -355,6 +339,7 @@ static BOOL IDCollectRequests(id object, NSMutableSet *requests, NSUInteger dept
 @property(nonatomic) BOOL updating;
 @property(nonatomic) BOOL applyingFilter;
 @property(nonatomic) BOOL filterReconcilePending;
+@property(nonatomic) NSUInteger appearanceEpoch;
 @property(nonatomic) BOOL active;
 @property(nonatomic) BOOL disabled;
 @property(nonatomic) NSUInteger recoveryAttempts;
@@ -391,6 +376,7 @@ static char IDCoordinatorKey;
 static char IDNativeHideOwnerKey;
 static NSHashTable *IDOwners;
 static BOOL IDRefreshPending;
+static NSUInteger IDAppearanceEpoch;
 static BOOL IDFilteringReady;
 
 static IDCoordinator *IDState(id owner) {
@@ -419,10 +405,33 @@ static void IDScheduleRefresh(void) {
     IDRefreshPending = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         IDRefreshPending = NO;
-        for (id owner in IDOwners.allObjects) {
+        // Pick the current visible native owner, not NSHashTable's arbitrary last
+        // controller. Bounded ancestor checks only; no UIWindow tree traversal.
+        IDCoordinator *selected = nil;
+        NSUInteger bestRank = 0, activeCount = 0;
+        NSArray *owners = IDOwners.allObjects;
+        for (UIViewController *owner in owners) {
             IDCoordinator *state = IDState(owner);
-            if (state.active) [state refresh];
+            if (![state workAllowed]) continue;
+            activeCount++;
+            UIView *native = IDRead(owner, "masterListView");
+            BOOL visible = [native isKindOfClass:UIView.class] && native.window == owner.viewIfLoaded.window;
+            UIView *ancestor = visible ? native : nil;
+            for (NSUInteger depth = 0; ancestor && depth < 32; depth++, ancestor = ancestor.superview) {
+                if ((ancestor.hidden && ancestor != state.hiddenNativeList) || ancestor.alpha <= 0.01) visible = NO;
+            }
+            if (ancestor) visible = NO;
+            if (native && !visible) continue;
+            if (owner.viewIfLoaded.hidden || owner.viewIfLoaded.window.hidden) continue;
+            NSUInteger rank = visible ? 2 : 1;
+            if (!selected || rank > bestRank || (rank == bestRank && state.appearanceEpoch > selected.appearanceEpoch)) {
+                selected = state; bestRank = rank;
+            }
         }
+        IDDiagnostics[@"ownerCount"] = @(owners.count);
+        IDDiagnostics[@"activeOwnerCount"] = @(activeCount);
+        IDDiagnostics[@"selectedOwnerState"] = !selected ? @"not-visible" : bestRank == 2 ? @"visible-native" : @"visible-owner-unverified-native";
+        if (selected) [selected refresh];
     });
 }
 
@@ -491,25 +500,18 @@ static BOOL IDSupplementaryReady(id owner) {
 - (NSArray<IDGroup *> *)snapshot {
     id master = IDRead(self.owner, "masterList");
     if (!master) master = IDRead(self.owner, "notificationMasterList");
-    id sectionObjects = IDRead(master, "_notificationSectionListsForEnumeration");
-    if (!sectionObjects) sectionObjects = IDRead(master, "sectionLists");
-    NSArray *sections = IDItems(sectionObjects);
+    BOOL reliable = NO;
+    NSSet *allRequests = IDEnumerationSnapshot(master, IDDiagnostics, &reliable);
+    // Metadata/render work has a separate, conservative cap; never hide native
+    // notifications when a larger model could not be represented completely.
     NSMutableSet *requests = [NSMutableSet new];
-    id allRequests = IDRead(master, "allNotificationRequests");
-    BOOL reliable = master && IDCollection(allRequests);
-    BOOL sectionsReliable = master && IDCollection(sectionObjects);
-    reliable = IDCollectRequests(allRequests, requests, 0) && reliable;
-    IDDiagnostics[@"masterSeen"] = @(master != nil);
-    IDDiagnostics[@"sections"] = @(sections.count);
-    IDDiagnostics[@"enumerationSupported"] = @(sectionObjects != nil || IDMethod(object_getClass(master), "allNotificationRequests", "@", 2));
-    for (id section in sections) {
-        id sectionRequests = IDRead(section, "allNotificationRequests");
-        id filteredRequests = IDRead(section, "filteredNotificationRequests");
-        if (!IDCollection(sectionRequests) || (self.filtered.count && !IDCollection(filteredRequests))) sectionsReliable = NO;
-        sectionsReliable = IDCollectRequests(sectionRequests, requests, 0) && sectionsReliable;
-        sectionsReliable = IDCollectRequests(filteredRequests, requests, 0) && sectionsReliable;
+    for (id request in allRequests) {
+        if (requests.count >= 160) { reliable = NO; break; }
+        [requests addObject:request];
     }
-    self.enumerationReliable = reliable || sectionsReliable;
+    self.enumerationReliable = reliable;
+    IDDiagnostics[@"enumerationComplete"] = @(reliable);
+    if (!reliable && allRequests.count > 160) IDDiagnostics[@"enumerationState"] = @"metadata-cap";
     self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected, self.owner) : @[];
     NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
     for (id request in requests) {
@@ -703,6 +705,7 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.active) return;
     self.dismissed = NO;
     self.active = YES;
+    self.appearanceEpoch = ++IDAppearanceEpoch;
     self.openingPending = YES;
     id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
     self.desiredSelection = [desired isKindOfClass:NSString.class] && [desired length] ? desired : nil;
@@ -888,9 +891,9 @@ static BOOL IDSupplementaryReady(id owner) {
         }
         if (groups.count == 0 && !IDContainedMode) {
             if (self.inserted) [self recover];
-            BOOL supported = [IDDiagnostics[@"enumerationSupported"] boolValue];
+            BOOL supported = self.enumerationReliable;
             IDStatus(supported ? @"waiting-notifications" : @"enumeration-unavailable",
-                supported ? @"控制器已出现；目前未读到通知" : @"控制器已出现，但当前系统的通知枚举接口不可用");
+                supported ? @"原生集合已读取且为空；等待通知事件" : @"原生通知尚未完整读出；请保留并使用原生列表");
             return;
         }
         if (IDContainedMode && self.inserted && !self.overlay) {
@@ -1142,6 +1145,39 @@ static BOOL IDOpenFeedback(NSString *message) {
 %end
 %end
 
+%group IDMasterEvents
+%hook NCNotificationMasterList
+- (void)insertNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)modifyNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)removeNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+%end
+%end
+
+// Do not hook a superclass implementation or install missing method stubs.
+static BOOL IDOwnObjectEvent(Class target, const char *name) {
+    if (!target || !IDMethod(target, name, "v", 3)) return NO;
+    Method candidate = class_getInstanceMethod(target, sel_registerName(name));
+    char *argument = method_copyArgumentType(candidate, 2);
+    BOOL objectArgument = IDEnumerationObjectType(argument);
+    free(argument);
+    if (!objectArgument) return NO;
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(target, &count);
+    BOOL found = NO;
+    for (unsigned int i = 0; i < count; i++)
+        if (method_getName(methods[i]) == sel_registerName(name)) { found = YES; break; }
+    free(methods);
+    return found;
+}
 static BOOL IDHooksInstalled;
 static NSUInteger IDInstallAttempts;
 static void IDInstallHooks(void) {
@@ -1180,6 +1216,14 @@ static void IDInstallHooks(void) {
         %init(IDFilter);
     }
     %init(IDMain);
+    Class masterClass = objc_getClass("NCNotificationMasterList");
+    BOOL masterEvents = IDOwnObjectEvent(masterClass, "insertNotificationRequest:")
+        && IDOwnObjectEvent(masterClass, "modifyNotificationRequest:")
+        && IDOwnObjectEvent(masterClass, "removeNotificationRequest:");
+    if (masterEvents) {
+        %init(IDMasterEvents);
+    }
+    IDDiagnostics[@"masterEventHooks"] = @(masterEvents);
     IDHooksInstalled = YES;
     IDDiagnostics[@"hooksInstalled"] = @YES;
     IDDiagnostics[@"filterAvailable"] = @(IDFilteringReady);
