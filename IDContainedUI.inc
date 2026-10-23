@@ -28,7 +28,21 @@
     if (seconds < 86400) return [NSString stringWithFormat:@"%lu 小时前", (unsigned long)(seconds / 3600)];
     return [NSString stringWithFormat:@"%lu 天前", (unsigned long)(seconds / 86400)];
 }
+- (BOOL)pageNavigationReady {
+    IDCoordinator *state = self.coordinator;
+    if (state.selectedRequestCount <= IDContainedLimit) return YES;
+    NSUInteger pages = IDContainedPageCount(state.selectedRequestCount);
+    for (UIButton *button in @[self.previousPageButton ?: [UIButton new], self.nextPageButton ?: [UIButton new]]) {
+        if (!button.window || button.window != self.window || button.hidden || button.alpha <= 0.01
+            || !button.userInteractionEnabled || button.bounds.size.width < 44 || button.bounds.size.height < 44) return NO;
+    }
+    return self.previousPageButton.enabled == (state.cardPage > 0)
+        && self.nextPageButton.enabled == (state.cardPage + 1 < pages)
+        && [self.previousPageButton actionsForTarget:state forControlEvent:UIControlEventTouchUpInside].count > 0
+        && [self.nextPageButton actionsForTarget:state forControlEvent:UIControlEventTouchUpInside].count > 0;
+}
 - (void)showCards {
+    self.previousPageButton = nil; self.nextPageButton = nil;
     CGPoint previousOffset = self.cardScroll.contentOffset;
     [self dropCards];
     for (UIView *view in self.cardStack.arrangedSubviews.copy) {
@@ -111,7 +125,26 @@
         NSString *empty = state.enumerationReliable ? @"当前范围暂无通知" : @"系统通知枚举接口不可用；请使用原生列表";
         [self.cardStack addArrangedSubview:[self cardLabel:empty style:UIFontTextStyleBody color:UIColor.secondaryLabelColor]];
     }
-    if (state.cards.count >= IDContainedLimit) [self.cardStack addArrangedSubview:[self cardLabel:@"仅展示当前范围最近 160 条；较早通知仍在原生列表。" style:UIFontTextStyleFootnote color:UIColor.secondaryLabelColor]];
+    if (state.selectedRequestCount > IDContainedLimit) {
+        NSUInteger pages = IDContainedPageCount(state.selectedRequestCount);
+        UILabel *page = [self cardLabel:[NSString stringWithFormat:@"第 %lu / %lu 页 · 当前范围共 %lu 条；较早通知可翻页访问",
+            (unsigned long)(state.cardPage + 1), (unsigned long)pages, (unsigned long)state.selectedRequestCount]
+            style:UIFontTextStyleFootnote color:UIColor.secondaryLabelColor];
+        [self.cardStack addArrangedSubview:page];
+        self.previousPageButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        self.nextPageButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [self.previousPageButton setTitle:@"上一页（较新）" forState:UIControlStateNormal];
+        [self.nextPageButton setTitle:@"下一页（较早）" forState:UIControlStateNormal];
+        self.previousPageButton.enabled = state.cardPage > 0;
+        self.nextPageButton.enabled = state.cardPage + 1 < pages;
+        [self.previousPageButton addTarget:state action:@selector(previousCardPage) forControlEvents:UIControlEventTouchUpInside];
+        [self.nextPageButton addTarget:state action:@selector(nextCardPage) forControlEvents:UIControlEventTouchUpInside];
+        for (UIButton *button in @[self.previousPageButton, self.nextPageButton]) {
+            button.translatesAutoresizingMaskIntoConstraints = NO;
+            [button.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+            [self.cardStack addArrangedSubview:button];
+        }
+    }
     NSUInteger redacted = 0;
     for (NSDictionary *card in state.cards) if ([card[@"redacted"] boolValue]) redacted++;
     NSString *policyNote = redacted ? @"系统策略未确认或设备未满足条件，部分内容已隐藏" : @"仅在解锁且受保护数据可用时预览；无法核验每 App 的 Never 映射";

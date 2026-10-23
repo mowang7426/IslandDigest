@@ -51,7 +51,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.8";
+    IDDiagnostics[@"version"] = @"0.3.9";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -150,7 +150,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.8.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.9.startup-pending";
 #endif
 }
 
@@ -217,6 +217,7 @@ static NSString *IDActionABIDiagnostic(id owner, id component, Method *outMethod
 }
 
 #include "IDEnumerationAdapter.inc"
+#include "IDNotificationIndex.inc"
 static id IDRead(id object, const char *name) {
     return IDEnumerationRead(object, name);
 }
@@ -285,6 +286,9 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, strong) UIScrollView *cardScroll;
 @property(nonatomic, strong) UIStackView *cardStack;
 @property(nonatomic, strong) UILabel *cardNotice;
+@property(nonatomic, strong) UIButton *previousPageButton;
+@property(nonatomic, strong) UIButton *nextPageButton;
+- (BOOL)pageNavigationReady;
 @property(nonatomic, strong) UITapGestureRecognizer *cardTap;
 @property(nonatomic) CGFloat cardTapStartOffset;
 @property(nonatomic) NSUInteger builtCardCount;
@@ -318,6 +322,21 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, copy) NSArray<NSDictionary *> *cards;
 @property(nonatomic, copy) NSArray<NSDictionary *> *renderedCards;
 @property(nonatomic) BOOL enumerationReliable;
+@property(nonatomic, strong) IDEnumerationCursor *enumerationCursor;
+@property(nonatomic, strong) id snapshotMaster;
+@property(nonatomic, strong) NSMutableDictionary *buildGroups;
+@property(nonatomic, strong) NSMutableArray *buildRecords;
+@property(nonatomic, copy) NSArray *snapshotRecords;
+@property(nonatomic, copy) NSArray *snapshotRequests;
+@property(nonatomic, copy) NSDictionary<NSString *, NSArray *> *snapshotByApp;
+@property(nonatomic, copy) NSArray<IDGroup *> *snapshotGroups;
+@property(nonatomic) NSUInteger snapshotGeneration, snapshotModelRevision, snapshotOptionsRevision, buildIndex, cardPage, selectedRequestCount, snapshotRetries;
+- (void)cancelSnapshot;
+- (void)continueSnapshot:(NSUInteger)generation;
+- (void)finishSnapshot;
+- (void)previousCardPage;
+- (void)nextCardPage;
+- (void)moveCardPage:(NSInteger)direction;
 @property(nonatomic, weak) UIView *hiddenNativeList;
 @property(nonatomic) BOOL nativeWasHidden;
 @property(nonatomic, strong) IDNativeHideLease *nativeHideToken;
@@ -401,6 +420,7 @@ static char IDNativeHideOwnerKey;
 static NSHashTable *IDOwners;
 static __weak IDCoordinator *IDCurrentNativeOwner;
 static BOOL IDRefreshPending;
+static NSUInteger IDModelRevision;
 static NSUInteger IDAppearanceEpoch;
 static BOOL IDFilteringReady;
 
@@ -469,6 +489,15 @@ static void IDScheduleRefresh(void) {
     });
 }
 
+static void IDModelDidChange(void) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ IDModelDidChange(); }); return; }
+    IDModelRevision++;
+    for (id owner in IDOwners.allObjects) {
+        IDCoordinator *state = IDState(owner);
+        state.snapshotRetries = 0; [state dropContainedContent];
+    }
+}
+
 static void IDRedactContainedNow(void) {
     void (^redact)(void) = ^{
         for (id owner in IDOwners.allObjects) [IDState(owner) dropContainedContent];
@@ -531,24 +560,31 @@ static BOOL IDSupplementaryReady(id owner) {
     else if (native) dispatch_async(dispatch_get_main_queue(), restore);
 }
 
-- (NSArray<IDGroup *> *)snapshot {
-    id master = IDRead(self.owner, "masterList");
-    if (!master) master = IDRead(self.owner, "notificationMasterList");
-    BOOL reliable = NO;
-    NSSet *allRequests = IDEnumerationSnapshot(master, IDDiagnostics, &reliable);
-    // Metadata/render work has a separate, conservative cap; never hide native
-    // notifications when a larger model could not be represented completely.
-    NSMutableSet *requests = [NSMutableSet new];
-    for (id request in allRequests) {
-        if (requests.count >= 160) { reliable = NO; break; }
-        [requests addObject:request];
+- (void)cancelSnapshot {
+    self.snapshotGeneration++;
+    IDEnumerationCancel(self.enumerationCursor);
+    self.enumerationCursor = nil; self.buildGroups = nil; self.buildRecords = nil;
+    self.snapshotGroups = nil; self.snapshotRecords = nil; self.enumerationReliable = NO;
+    self.snapshotRequests = nil; self.snapshotByApp = nil; self.snapshotMaster = nil;
+    self.selectedRequestCount = 0;
+}
+- (void)continueSnapshot:(NSUInteger)generation {
+    if (generation != self.snapshotGeneration || ![self workAllowed]) return;
+    if (self.snapshotModelRevision != IDModelRevision) { [self cancelSnapshot]; [self refresh]; return; }
+    IDEnumerationCursor *cursor = self.enumerationCursor;
+    if (!cursor.done) IDEnumerationAdvance(cursor, IDDiagnostics);
+    if (cursor.done && self.snapshotRetries < 2 && ([cursor.failure isEqual:@"model-changed"] || [cursor.failure isEqual:@"collection-mutated"])) {
+        self.snapshotRetries++; [self cancelSnapshot]; [self refresh]; return;
     }
-    self.enumerationReliable = reliable;
-    IDDiagnostics[@"enumerationComplete"] = @(reliable);
-    if (!reliable && allRequests.count > 160) IDDiagnostics[@"enumerationState"] = @"metadata-cap";
-    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected, self.owner) : @[];
-    NSMutableDictionary<NSString *, IDGroup *> *groups = [NSMutableDictionary new];
-    for (id request in requests) {
+    if (cursor.done) { IDDiagnostics[@"enumerationComplete"] = @NO; IDDiagnostics[@"enumerationState"] = @"metadata"; }
+    if (cursor.done && !self.buildGroups) {
+        self.buildGroups = [NSMutableDictionary new]; self.buildRecords = [NSMutableArray new]; self.buildIndex = 0;
+    }
+    NSMutableDictionary<NSString *, IDGroup *> *groups = self.buildGroups;
+    double deadline = IDMonotonic() + 0.002;
+    for (NSUInteger count = 0; cursor.done && self.buildIndex < cursor.requests.count
+         && count < 32 && (count == 0 || IDMonotonic() < deadline); count++) {
+        id request = cursor.requests[self.buildIndex++];
         NSString *identifier = IDRead(request, "sectionIdentifier");
         if (![identifier isKindOfClass:NSString.class] || identifier.length == 0) continue;
         IDGroup *group = groups[identifier];
@@ -585,7 +621,41 @@ static BOOL IDSupplementaryReady(id owner) {
         if ([date isKindOfClass:NSDate.class] && [date compare:group.latest] == NSOrderedDescending) {
             group.latest = date;
         }
+        [self.buildRecords addObject:@{@"app":identifier, @"date":[date isKindOfClass:NSDate.class] ? date : NSDate.distantPast, @"request":request}];
     }
+    if (!cursor.done || self.buildIndex < cursor.requests.count) {
+        __weak IDCoordinator *weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            [weakSelf continueSnapshot:generation];
+        }); // Yield the run loop between finite slices; not a model polling timer.
+    }
+    // Only immutable app/date records are sorted on a worker. Native request
+    // references are opaque payloads: never invoke a native getter off main.
+    NSArray *records = [self.buildRecords copy];
+    __weak IDCoordinator *weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSArray *ordered = [records sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+            return [b[@"date"] compare:a[@"date"]];
+        }];
+        NSArray *allRequests = nil;
+        NSDictionary *byApp = IDBuildNotificationIndex(ordered, &allRequests);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            IDCoordinator *state = weakSelf;
+            if (!state || generation != state.snapshotGeneration || ![state workAllowed]) return;
+            if (state.snapshotModelRevision != IDModelRevision) { [state cancelSnapshot]; [state refresh]; return; }
+            state.snapshotRecords = ordered;
+            state.snapshotRequests = allRequests; state.snapshotByApp = byApp;
+            [state finishSnapshot];
+            state.enumerationReliable = cursor.reliable;
+            IDDiagnostics[@"enumerationComplete"] = @(cursor.reliable);
+            IDDiagnostics[@"enumerationState"] = cursor.failure ?: (!cursor.supported ? @"unsupported" : cursor.unread ? @"unread-shape" : ordered.count ? @"read" : @"supported-empty");
+            state.enumerationCursor = nil; state.buildGroups = nil; state.buildRecords = nil;
+            [state refresh];
+        });
+    });
+}
+- (void)finishSnapshot {
+    NSMutableDictionary<NSString *, IDGroup *> *groups = self.buildGroups;
     // Export only bounded local app names for Settings; never diagnostic or notification text.
     NSMutableDictionary *names = [NSMutableDictionary new];
     id storedNames = IDPreferenceValue(@"AppNames");
@@ -600,11 +670,43 @@ static BOOL IDSupplementaryReady(id owner) {
     }
     if (![storedNames isEqual:names]) IDWritePreference(@"AppNames", names);
     if (![IDPreferenceValue(@"ObservedApps") isEqual:observed]) IDWritePreference(@"ObservedApps", observed);
-    return [groups.allValues sortedArrayUsingComparator:^NSComparisonResult(IDGroup *first, IDGroup *second) {
+    self.snapshotGroups = [groups.allValues sortedArrayUsingComparator:^NSComparisonResult(IDGroup *first, IDGroup *second) {
         return (NSComparisonResult)IDExperienceOrder([pins containsObject:first.identifier], [pins containsObject:second.identifier],
             (int)IDSortMode, first.count, second.count, first.latest.timeIntervalSince1970, second.latest.timeIntervalSince1970,
             (int)[first.name localizedStandardCompare:second.name], (int)[first.identifier compare:second.identifier]);
     }];
+}
+
+- (NSArray<IDGroup *> *)snapshot {
+    id master = IDRead(self.owner, "masterList");
+    if (!master) master = IDRead(self.owner, "notificationMasterList");
+    if (self.snapshotMaster != master || self.snapshotModelRevision != IDModelRevision
+        || self.snapshotOptionsRevision != IDOptionsRevision) [self cancelSnapshot];
+    if (!self.snapshotGroups && !self.enumerationCursor) {
+        self.snapshotMaster = master; self.snapshotModelRevision = IDModelRevision;
+        self.snapshotOptionsRevision = IDOptionsRevision;
+        self.enumerationCursor = IDEnumerationBegin(master);
+        NSUInteger generation = ++self.snapshotGeneration;
+        __weak IDCoordinator *weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf continueSnapshot:generation]; });
+    }
+    NSUInteger page = self.cardPage, selectedCount = 0;
+    NSArray *requests = IDNotificationPageRequests(self.snapshotRequests, self.snapshotByApp,
+        self.selected, &page, &selectedCount);
+    self.cardPage = page; self.selectedRequestCount = selectedCount;
+    IDDiagnostics[@"selectedRequests"] = @(selectedCount);
+    IDDiagnostics[@"cardPage"] = @(selectedCount ? page + 1 : 0);
+    IDDiagnostics[@"cardPages"] = @(IDContainedPageCount(selectedCount));
+    self.cards = IDContainedMode ? IDContainedSnapshot(requests, self.selected, self.owner) : @[];
+    return self.snapshotGroups ?: @[];
+}
+- (void)previousCardPage { [self moveCardPage:-1]; }
+- (void)nextCardPage { [self moveCardPage:1]; }
+- (void)moveCardPage:(NSInteger)direction {
+    if (![self workAllowed] || self.updating || !self.snapshotGroups) return;
+    self.cardPage = IDContainedPageMove(self.cardPage, self.selectedRequestCount, direction);
+    ((IDDigestView *)self.panel.view).cardScroll.contentOffset = CGPointZero;
+    self.groups = [self snapshot]; [self render];
 }
 
 - (BOOL)applyFilter {
@@ -748,6 +850,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)beginAppearance {
+    self.snapshotRetries = 0; self.cardPage = 0;
     if (self.active) return;
     self.dismissed = NO;
     self.active = YES;
@@ -854,6 +957,7 @@ static BOOL IDSupplementaryReady(id owner) {
     self.updating = YES;
     @try {
         self.openingPending = NO; // A user tap wins over an already queued first-appearance refresh.
+        self.cardPage = 0;
         self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
         if (IDContainedMode) self.groups = [self snapshot];
         self.desiredSelection = self.selected;
@@ -897,6 +1001,7 @@ static BOOL IDSupplementaryReady(id owner) {
         double snapshotStarted = IDMonotonic();
         NSArray<IDGroup *> *groups = [self snapshot];
         IDRecordPerformance(@"snapshot", snapshotStarted);
+        if (!self.snapshotGroups) { [self updateNativeListVisibility]; return; }
         BOOL unchanged = self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
         for (NSUInteger index = 0; index < groups.count; index++) {
@@ -1149,22 +1254,27 @@ static BOOL IDOpenFeedback(NSString *message) {
 }
 - (void)insertNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)modifyNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)removeNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)notificationListComponent:(id)component didRemoveNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)notificationListBaseComponentDidRemoveAll:(id)component {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 %end
@@ -1223,14 +1333,17 @@ static BOOL IDOpenFeedback(NSString *message) {
 %hook NCNotificationMasterList
 - (void)insertNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)modifyNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 - (void)removeNotificationRequest:(id)request {
     %orig;
+    IDModelDidChange();
     IDScheduleRefresh();
 }
 %end

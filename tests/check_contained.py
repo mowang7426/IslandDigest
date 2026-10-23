@@ -48,9 +48,32 @@ assert "snapshotComplete" in coordinator
 assert "IDNativeHideOwnerKey" in coordinator
 assert "cardViewportVisible" in coordinator and "bounds.size.height >= 44" in coordinator
 adapter = (root/"IDEnumerationAdapter.inc").read_text()
-assert "depth > 8" in adapter and "requests.count >= 4096" in adapter
-assert "IDEnumerationSnapshot(master, IDDiagnostics, &reliable)" in main
-assert "self.enumerationReliable = reliable;" in main
+assert 'frame.depth > 32' in adapter and 'cursor.requests.count >= 20000' in adapter
+assert 'IDEnumerationAdvance(cursor, IDDiagnostics)' in main
+assert 'state.enumerationReliable = cursor.reliable;' in main
+assert 'IDEnumerationCancel(self.enumerationCursor)' in main
+assert 'step < 64' in adapter and 'IDMonotonic() + 0.002' in adapter
+assert 'count < 32' in main and 'continueSnapshot:generation' in main
+assert 'snapshotModelRevision != IDModelRevision' in main
+assert 'snapshotGeneration' in main and 'self.snapshotRetries < 2' in main
+assert main.count('IDModelDidChange();') >= 8
+assert 'requests.count >= 160' not in main and 'metadata-cap' not in main
+assert 'totalRequests < IDContainedLimit' not in coordinator
+assert 'IDContainedSnapshotCoverage(self.snapshotRecords.count, totalRequests' in coordinator
+assert 'pageNavigationReady' in ui and 'actionsForTarget:state' in ui
+assert 'state.selectedRequestCount > IDContainedLimit' in ui
+assert 'IDContainedPageMove(self.cardPage' in main
+index = (root/'IDNotificationIndex.inc').read_text()
+assert 'IDNotificationPageRequests(self.snapshotRequests, self.snapshotByApp' in main
+assert 'IDBuildNotificationIndex(ordered, &allRequests)' in main
+assert 'snapshotOptionsRevision != IDOptionsRevision' in main
+assert 'self.snapshotRequests = nil; self.snapshotByApp = nil; self.snapshotMaster = nil' in main
+assert '[cursor.seen removeAllObjects]; cursor.master = nil' in adapter
+assert '4 * NSEC_PER_MSEC' in main
+assert 'IDContainedPageClamp(*page, matching.count)' in index
+assert '#include "../IDNotificationIndex.inc"' in (root/'tests/Enumeration.m').read_text()
+assert 'current scope' not in ui  # user-facing navigation remains localized
+assert '仅展示当前范围最近 160 条' not in ui
 
 # 0.1.9 rendering/layout regressions: check ordering and real-view fail-safe,
 # not merely the model count or a nonzero empty viewport.
