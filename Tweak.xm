@@ -14,6 +14,7 @@
 #import "IDClearLogic.h"
 #import "IDContainedLogic.h"
 #import "IDLayoutLogic.h"
+#import "IDCardReadiness.h"
 #import "IDScrollLogic.h"
 #import "IDCollapseLogic.h"
 #import "IDPerformanceLogic.h"
@@ -50,7 +51,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.7";
+    IDDiagnostics[@"version"] = @"0.3.8";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -84,7 +85,7 @@ static void IDLoadOptions(void) {
     IDSortMode = [@[@"recent", @"count", @"name"] indexOfObject:IDStringOption(@"SortMode", @[@"recent", @"count", @"name"], @"recent")];
     IDPanelTopOffset = IDNumberOption(@"PanelTopOffset", 220, 0, 420);
     IDPanelSideInset = IDNumberOption(@"PanelSideInset", 8, 8, 64);
-    IDPanelMaxHeight = IDNumberOption(@"PanelMaxHeight", 360, 240, 600);
+    IDPanelMaxHeight = IDNumberOption(@"PanelMaxHeight", 360, 240, 1000);
     IDPanelOpacity = IDNumberOption(@"PanelBackgroundOpacity", 0, 0, 100) / 100.0;
     IDPanelBlur = IDPref(@"PanelBlur", NO);
     IDOptionsRevision++;
@@ -149,7 +150,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.7.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.8.startup-pending";
 #endif
 }
 
@@ -268,6 +269,9 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, strong) UIButton *capsuleButton;
 @property(nonatomic) CGSize expandedSize;
 @property(nonatomic) BOOL retainedLayoutReady;
+@property(nonatomic, copy) NSDictionary *cardReadinessDiagnostic;
+- (BOOL)semanticLabelsInView:(UIView *)view depth:(NSUInteger)depth visible:(BOOL *)visible;
+- (BOOL)cardReadinessFailure:(NSString *)reason index:(NSInteger)index view:(UIView *)view;
 - (BOOL)expandedCardsLayoutReady;
 - (BOOL)capsuleReachable;
 - (void)updateCollapsePresentation;

@@ -112,6 +112,12 @@
     for (NSDictionary *card in self.cards) if ([card[@"redacted"] boolValue]) redacted++;
     IDDiagnostics[@"cardsRedacted"] = @(IDContainedMode ? redacted : 0);
     IDDiagnostics[@"cardsLayoutReady"] = @(cardsReady);
+    NSDictionary *readiness = digest.cardReadinessDiagnostic;
+    IDDiagnostics[@"cardsReadinessReason"] = ![self.cards isEqual:self.renderedCards] ? @"stale-rendered-model" : (readiness[@"reason"] ?: @"not-evaluated");
+    IDDiagnostics[@"cardsReadinessIndex"] = readiness[@"index"] ?: @(-1);
+    IDDiagnostics[@"cardsReadinessType"] = readiness[@"type"] ?: @"none";
+    IDDiagnostics[@"cardsReadinessWidth"] = readiness[@"width"] ?: @0;
+    IDDiagnostics[@"cardsReadinessHeight"] = readiness[@"height"] ?: @0;
     IDDiagnostics[@"panelCollapseState"] = @[@"expanded", @"collapsing", @"collapsed", @"expanding"][self.collapseState];
     IDDiagnostics[@"retainedExpandedLayoutReady"] = @(digest.retainedLayoutReady);
     IDDiagnostics[@"capsuleReachable"] = @([digest capsuleReachable]);

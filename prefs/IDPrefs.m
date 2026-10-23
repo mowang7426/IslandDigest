@@ -152,7 +152,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSDate *updated = status[@"updated"];
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"masterEventHooks", @"enumerationVisits", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"masterEventHooks", @"enumerationVisits", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     // The saved active verdict survives an inactive teardown sample. Whitelist
     // nested scalars too: never display arbitrary diagnostic dictionary content.
@@ -171,7 +171,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.7 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.8 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
@@ -192,7 +192,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[self group:@"面板位置与大小（单位：点）" footer:@"锁屏与通知中心共用。顶部偏移从窗口安全区与通知控制器的交集顶部向下计算；默认 220 点是保守预留，不是已验证的时钟避让，UIKit 安全区本身不含锁屏时钟。不会移动或读取时钟视图。如仍挡住时间，请增加顶部偏移。左右边距控制宽度；高度是上限，卡片少时自动缩小。旋转后按实际窗口重新限界，底部预留 110 点给快捷按钮；极小空间保留原生列表。拖动约每 120ms 合并更新，无需注销。"]];
     [items addObject:[self slider:@"顶部向下偏移（默认 220）" key:@"PanelTopOffset" low:0 high:420 fallback:220 step:10]];
     [items addObject:[self slider:@"左右边距（默认 8）" key:@"PanelSideInset" low:8 high:64 fallback:8 step:2]];
-    [items addObject:[self slider:@"面板最大高度（默认 360）" key:@"PanelMaxHeight" low:240 high:600 fallback:360 step:10]];
+    [items addObject:[self slider:@"面板最大高度（默认 360）" key:@"PanelMaxHeight" low:240 high:1000 fallback:360 step:10]];
     PSSpecifier *resetLayout = [PSSpecifier preferenceSpecifierNamed:@"恢复默认位置与大小" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     resetLayout.buttonAction = @selector(resetPanelLayout); [items addObject:resetLayout];
     [items addObject:[self group:@"手动清理通知" footer:@"点击面板垃圾桶：选中应用只清理该应用；全部则处理全部应用。两种范围始终先确认，系统真实清除不可撤销。仅处理点击时的快照，新到通知不纳入。不自动/定时清理。关键、受保护、不可清理或保护能力未知的通知跳过；接口或解锁状态无法验证时按钮停用，原因显示在面板与诊断中。应用筛选不会扩大清理范围。"]];
