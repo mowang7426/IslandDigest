@@ -26,6 +26,7 @@ static double IDMonotonic(void) { if (advancing) clockValue += 0.001; return clo
 @implementation IDTestSection
 @end
 @interface IDTestMaster : NSObject
+@property(nonatomic) unsigned long long notificationCount;
 @property(nonatomic, strong) id sectionLists;
 @property(nonatomic, strong) id incomingSectionList;
 @property(nonatomic, strong) id historySectionList;
@@ -71,6 +72,11 @@ int main(void) { @autoreleasepool {
     master.sectionLists = @[];
     assert(snapshot(master, &complete, diagnostic).count == 0 && complete);
     assert([diagnostic[@"enumerationState"] isEqual:@"supported-empty"]);
+    master.notificationCount = 3;
+    snapshot(master, &complete, diagnostic);
+    assert(!complete && [diagnostic[@"enumerationState"] isEqual:@"native-count-mismatch"]);
+    assert([diagnostic[@"nativeCountKnown"] boolValue] && [diagnostic[@"nativeModelCount"] unsignedIntegerValue] == 3);
+    master.notificationCount = 0;
     snapshot([NSObject new], &complete, diagnostic); assert(!complete && ![diagnostic[@"enumerationSupported"] boolValue]);
     snapshot(nil, &complete, diagnostic); assert(!complete && [diagnostic[@"enumerationState"] isEqual:@"missing-master"]);
     // Cycles deduplicate by object identity, not descriptions or notification IDs.

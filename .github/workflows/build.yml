@@ -43,6 +43,8 @@ jobs:
           python3 tests/check_contained.py
           python3 tests/check_collapse.py
           python3 tests/check_performance_text.py
+          cc -Wall -Wextra -Werror tests/EnumerationABI.c -o /tmp/id-enumeration-abi-tests
+          /tmp/id-enumeration-abi-tests
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/Enumeration.m -o /tmp/id-enumeration-tests
           /tmp/id-enumeration-tests
           cc -Wall -Wextra -Werror tests/Performance.c -o /tmp/id-performance-tests

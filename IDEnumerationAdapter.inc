@@ -2,19 +2,11 @@
  * No KVC, ivars, descriptions, request text, dynamically discovered selectors or mutation.
  * Calls are restricted to zero-argument object getters after complete return/arity checks.
  */
-static BOOL IDEnumerationObjectType(const char *type) {
-    if (!type) return NO;
-    while (*type && strchr("rnNoORV", *type)) type++;
-    return type[0] == '@' && (type[1] == '\0' || type[1] == '"');
-}
+#include "IDEnumerationABI.h"
 static id IDEnumerationTryRead(id object, const char *name, BOOL *failed) {
     if (!object) return nil;
     Method method = class_getInstanceMethod(object_getClass(object), sel_registerName(name));
-    if (!method || method_getNumberOfArguments(method) != 2) return nil;
-    char *type = method_copyReturnType(method);
-    BOOL valid = IDEnumerationObjectType(type);
-    free(type);
-    if (!valid) return nil;
+    if (!method || !IDEnumerationGetterABI(method_getTypeEncoding(method))) return nil;
     @try { return ((id (*)(id, SEL))objc_msgSend)(object, sel_registerName(name)); }
     @catch (__unused NSException *exception) { if (failed) *failed = YES; return nil; }
 }
