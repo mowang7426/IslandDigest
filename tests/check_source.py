@@ -157,4 +157,12 @@ assert info['CFBundleShortVersionString'] == '0.3.10'
 assert 'Version: 0.3.10' in (root/'control').read_text()
 assert "'0.3.10', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
 assert 'IslandDigest-0.3.10.startup-pending' in tweak
+# The real coordinator, not just the adapter, must leave a pending cursor intact.
+caller = tweak.split('- (void)continueSnapshot:(NSUInteger)generation {', 1)[1].split('- (void)finishSnapshot {', 1)[0]
+pending = caller.split('if (action == IDSnapshotPending) {', 1)[1].split('if (action != IDSnapshotSort) return;', 1)[0]
+assert '[weakSelf continueSnapshot:generation];' in pending and 'return;' in pending
+assert 'self.snapshotSorting = YES;' in caller and 'state.enumerationCursor = nil;' in caller
+assert caller.index('return;\n    }\n    if (action != IDSnapshotSort)') < caller.index('NSArray *records = [self.buildRecords copy]')
+assert 'tests/Snapshot.c' in (root/'.github/workflows/build.yml').read_text()
+print('PASS coordinator pending continuation returns before sorting/commit; production state gate is CI-tested')
 print('PASS 0.3.10 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')
