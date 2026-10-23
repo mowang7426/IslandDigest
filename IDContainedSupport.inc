@@ -1,8 +1,4 @@
 /* Contained notifications: no notification text is written to preferences or diagnostics. */
-static BOOL IDCollection(id value) {
-    return [value isKindOfClass:NSArray.class] || [value isKindOfClass:NSSet.class]
-        || [value isKindOfClass:NSOrderedSet.class] || [value isKindOfClass:NSDictionary.class];
-}
 /*
  * Preview policy is deliberately fail-closed for the system enum: iOS 17's
  * contentPreviewSetting is an opaque unsigned value in the available headers,
