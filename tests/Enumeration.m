@@ -25,6 +25,11 @@ static double IDMonotonic(void) { if (advancing) clockValue += 0.001; return clo
 @end
 @implementation IDTestSection
 @end
+@interface IDTestThrowingSection : IDTestSection
+@end
+@implementation IDTestThrowingSection
+- (id)allNotificationRequests { @throw [NSException exceptionWithName:@"SyntheticGetterFailure" reason:nil userInfo:nil]; }
+@end
 @interface IDTestMaster : NSObject
 @property(nonatomic) unsigned long long notificationCount;
 @property(nonatomic, strong) id sectionLists;
@@ -77,6 +82,16 @@ int main(void) { @autoreleasepool {
     assert(!complete && [diagnostic[@"enumerationState"] isEqual:@"native-count-mismatch"]);
     assert([diagnostic[@"nativeCountKnown"] boolValue] && [diagnostic[@"nativeModelCount"] unsignedIntegerValue] == 3);
     master.notificationCount = 0;
+    IDTestThrowingSection *throwing = [IDTestThrowingSection new];
+    throwing.filteredNotificationRequests = @[];
+    master.sectionLists = @[throwing];
+    snapshot(master, &complete, diagnostic);
+    assert(!complete && ![diagnostic[@"enumerationSupported"] boolValue]);
+    id deep = @[request];
+    for (NSUInteger i = 0; i < 12; i++) deep = @[deep];
+    master.sectionLists = deep;
+    snapshot(master, &complete, diagnostic);
+    assert(!complete && [diagnostic[@"enumerationState"] isEqual:@"bounded-partial"]);
     snapshot([NSObject new], &complete, diagnostic); assert(!complete && ![diagnostic[@"enumerationSupported"] boolValue]);
     snapshot(nil, &complete, diagnostic); assert(!complete && [diagnostic[@"enumerationState"] isEqual:@"missing-master"]);
     // Cycles deduplicate by object identity, not descriptions or notification IDs.

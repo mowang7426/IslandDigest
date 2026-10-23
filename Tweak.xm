@@ -1147,9 +1147,18 @@ static BOOL IDOpenFeedback(NSString *message) {
 
 %group IDMasterEvents
 %hook NCNotificationMasterList
-- (void)insertNotificationRequest:(id)request { %orig; IDScheduleRefresh(); }
-- (void)modifyNotificationRequest:(id)request { %orig; IDScheduleRefresh(); }
-- (void)removeNotificationRequest:(id)request { %orig; IDScheduleRefresh(); }
+- (void)insertNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)modifyNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
+- (void)removeNotificationRequest:(id)request {
+    %orig;
+    IDScheduleRefresh();
+}
 %end
 %end
 
@@ -1211,7 +1220,9 @@ static void IDInstallHooks(void) {
     BOOL masterEvents = IDOwnObjectEvent(masterClass, "insertNotificationRequest:")
         && IDOwnObjectEvent(masterClass, "modifyNotificationRequest:")
         && IDOwnObjectEvent(masterClass, "removeNotificationRequest:");
-    if (masterEvents) { %init(IDMasterEvents); }
+    if (masterEvents) {
+        %init(IDMasterEvents);
+    }
     IDDiagnostics[@"masterEventHooks"] = @(masterEvents);
     IDHooksInstalled = YES;
     IDDiagnostics[@"hooksInstalled"] = @YES;
