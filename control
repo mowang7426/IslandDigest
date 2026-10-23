@@ -1,6 +1,6 @@
 Package: com.local.islanddigest
 Name: 灵屿通知
-Version: 0.3.7
+Version: 0.3.8
 Architecture: iphoneos-arm
 Description: 以简洁的应用胶囊归纳锁屏通知，严格保护锁定状态，并在解锁授权时显示系统通知预览。
 Maintainer: MoWang

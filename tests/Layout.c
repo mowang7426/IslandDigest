@@ -24,8 +24,9 @@ int main(void) {
     for(int w=160;w<=1024;w+=72) for(int h=180;h<=1366;h+=73)
       for(int offset=-50;offset<=600;offset+=50)
        for(int inset=8;inset<=64;inset+=8)
-        for(int preferred=44;preferred<=620;preferred+=96)
-         bounded(w,h,44,34,offset,inset,preferred,360);
+        for(int preferred=44;preferred<=1100;preferred+=96)
+         { bounded(w,h,44,34,offset,inset,preferred,360);
+          bounded(w,h,44,34,offset,inset,preferred,1000); }
     puts("PASS layout: real production geometry, portrait/landscape/tiny windows, dynamic content and bounds");
     printf("%u portable assertions/cases; no UIKit/runtime/clock-frame claim\n",tests);
     return 0;

@@ -63,8 +63,8 @@ assert 'shell.translatesAutoresizingMaskIntoConstraints = NO' in ui
 assert 'constraintGreaterThanOrEqualToConstant:64' in ui
 assert 'self.builtCardCount = rendered' in ui and 'self.builtCardCount = 0' in ui
 assert '- (BOOL)cardsReadyForNativeHide' in ui
-assert 'if (!readable) return NO' in ui
-assert 'valid == self.builtCardCount && visible' in ui
+assert 'no-visible-semantic-card' in ui and 'semanticLabelsInView:shell' in ui
+assert 'IDCardsRepresentationUsable(expected, self.builtCardCount, valid, visible)' in ui
 assert 'CGRectIntersection(frame, self.cardScroll.bounds)' in ui
 assert '[digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards]' in coordinator
 assert '&& ownsOrUnclaimed && representationReady && forwardingSupported' in coordinator
@@ -111,7 +111,7 @@ assert 'self.nativeLayoutSignatureValid = NO' in ui
 # Never synchronize the prohibited 0.3.4 preparation implementation.
 assert 'prepareFirstFrame' not in main + digest + coordinator
 assert 'dispatch_sync' not in main + digest + coordinator
-assert 'valid == self.builtCardCount && visible' in ui  # ANY visible card, not all cards.
+assert 'IDCardsRepresentationUsable(expected, self.builtCardCount, valid, visible)' in ui  # ANY visible card, not all cards.
 print('PASS 0.3.6 post-layout recovery, native subclass/window/lease/reassert/owner and no-preparation contracts')
 
 # 0.3.6 Settings must expose only the saved verdict's safe scalar fields.
@@ -122,4 +122,16 @@ for key in ('nativeVisibilityHooks', 'nativeCandidateClass', 'nativeCandidateSam
 assert '[lastActive isKindOfClass:NSDictionary.class]' in prefs
 assert '[value isKindOfClass:NSString.class]' in prefs
 assert '[value isKindOfClass:NSNumber.class]' in prefs
-print('PASS 0.3.6 Settings current and last-active diagnostics scalar whitelist')
+assert 'IDCardReadiness.h' in main
+assert 'cardsReadinessReason' in coordinator
+assert 'IDCardCoverageUsable' in ui
+assert 'IDCardsRepresentationUsable' in ui
+assert 'IDNumberOption(@"PanelMaxHeight", 360, 240, 1000)' in main
+assert 'low:240 high:1000' in prefs
+assert 'label.text.length > 0 || label.attributedText.length > 0' in ui
+assert 'isKindOfClass:IDCardView.class' in ui
+assert ui.index('IDCardVisibleAreaUsable(intersection.size.width') < ui.index('[self semanticLabelsInView:shell')
+assert 'self.builtCardCount != self.coordinator.cards.count' not in ui
+assert 'low:240 high:600' not in prefs
+assert 'tests/CardReadiness.c' in (root/'.github/workflows/build.yml').read_text()
+print('PASS 0.3.8 real nested label traversal, offscreen tolerance, selected snapshot counts, 1000pt cap and unchanged 360pt default')

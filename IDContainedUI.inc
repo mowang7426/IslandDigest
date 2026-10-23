@@ -124,39 +124,82 @@
     [self layoutIfNeeded];
     CGFloat maximum = MAX(0, self.cardScroll.contentSize.height - self.cardScroll.bounds.size.height);
     self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, previousOffset.y), maximum));
+    // One coalesced next-run-loop verdict after descendant Auto Layout. The existing
+    // presentation generation cancels stale callbacks on teardown; never enumerate.
+    [self.coordinator scheduleNativeListVisibility];
 }
 - (BOOL)cardsReadyForNativeHide {
     if (IDPanelCompact(self.coordinator.collapseState)) return NO;
     return [self expandedCardsLayoutReady];
 }
+- (BOOL)cardReadinessFailure:(NSString *)reason index:(NSInteger)index view:(UIView *)view {
+    self.cardReadinessDiagnostic = @{ @"reason": reason, @"index": @(index),
+        @"type": view ? NSStringFromClass(view.class) : @"none",
+        @"width": @(view.bounds.size.width), @"height": @(view.bounds.size.height) };
+    return NO;
+}
+- (BOOL)semanticLabelsInView:(UIView *)view depth:(NSUInteger)depth visible:(BOOL *)visible {
+    if (!view || depth > 4 || view.hidden || view.alpha <= 0.01) return NO;
+    BOOL readable = NO;
+    if ([view isKindOfClass:UILabel.class]) {
+        UILabel *label = (UILabel *)view;
+        readable = IDCardSemanticUsable(label.text.length > 0 || label.attributedText.length > 0, view.hidden,
+            view.alpha, view.bounds.size.width, view.bounds.size.height);
+        if (readable) {
+            CGRect frame = [view convertRect:view.bounds toView:self.cardScroll];
+            CGRect intersection = CGRectIntersection(frame, self.cardScroll.bounds);
+            if (!CGRectIsNull(intersection) && intersection.size.width > 0 && intersection.size.height > 0) *visible = YES;
+        }
+    }
+    for (UIView *child in view.subviews) {
+        // Metadata is semantic too: app/date live inside a nested header stack.
+        // Do not short circuit: we must find a visible label, not just any label.
+        if ([self semanticLabelsInView:child depth:depth + 1 visible:visible]) readable = YES;
+    }
+    return readable;
+}
 - (BOOL)expandedCardsLayoutReady {
-    // Retained expanded coordinates are independently verified, never called visible capsule cards.
-    CGFloat requiredHeight = CGRectGetMaxY(self.cardStack.frame) + 12;
-    if (!self.cardScroll.scrollEnabled || !self.cardScroll.panGestureRecognizer.enabled
-        || !isfinite(self.cardScroll.contentSize.height)
-        || self.cardScroll.contentSize.height + 1 < requiredHeight) return NO;
-    if (!self.window || self.hidden || self.cardScroll.hidden || !self.builtCardCount
-        || self.builtCardCount != self.coordinator.cards.count
-        || self.cardScroll.bounds.size.height < 44 || self.cardScroll.bounds.size.width < 44
-        || self.cardStack.bounds.size.width < 44 || self.cardStack.bounds.size.height < 44) return NO;
+    // Count exactly the selected rendered range, not all native requests/history.
+    NSUInteger expected = 0;
+    for (NSDictionary *card in self.coordinator.cards) {
+        if (!self.coordinator.selected || [card[@"app"] isEqual:self.coordinator.selected]) expected++;
+    }
+    if (!self.window || self.window.hidden || self.hidden || self.alpha <= 0.01 || self.cardScroll.hidden
+        || (!IDPanelCompact(self.coordinator.collapseState)
+            && (self.expandedContent.hidden || self.expandedContent.alpha <= 0.01))
+        || self.cardScroll.window != self.window)
+        return [self cardReadinessFailure:@"viewport-uninstalled" index:-1 view:self.cardScroll];
+    if (!expected || self.builtCardCount != expected)
+        return [self cardReadinessFailure:@"rendered-count-mismatch" index:-1 view:self.cardStack];
+    if (!IDCardGeometryUsable(self.cardScroll.bounds.size.width, self.cardScroll.bounds.size.height)
+        || !IDCardGeometryUsable(self.cardStack.bounds.size.width, self.cardStack.bounds.size.height))
+        return [self cardReadinessFailure:@"viewport-or-stack-geometry" index:-1 view:self.cardScroll];
+    if (!self.cardScroll.scrollEnabled || !self.cardScroll.panGestureRecognizer.enabled)
+        return [self cardReadinessFailure:@"scroll-disabled" index:-1 view:self.cardScroll];
+    if (!IDCardCoverageUsable(self.cardScroll.contentSize.height, CGRectGetMaxY(self.cardStack.frame)))
+        return [self cardReadinessFailure:@"content-coverage" index:-1 view:self.cardStack];
     NSUInteger valid = 0; BOOL visible = NO;
     for (UIView *shell in self.cardStack.arrangedSubviews) {
-        if (![shell.accessibilityIdentifier isEqualToString:@"IDContainedCard"]) continue;
-        if (shell.hidden || shell.bounds.size.width < 44 || shell.bounds.size.height < 44
-            || !shell.accessibilityLabel.length) return NO;
-        BOOL readable = NO;
-        for (UIView *content in shell.subviews) {
-            if (![content isKindOfClass:UIStackView.class]) continue;
-            for (UIView *line in ((UIStackView *)content).arrangedSubviews) {
-                if ([line isKindOfClass:UILabel.class] && ((UILabel *)line).text.length
-                    && !line.hidden && line.bounds.size.width > 0 && line.bounds.size.height > 0) readable = YES;
-            }
-        }
-        if (!readable) return NO;
+        if (![shell isKindOfClass:IDCardView.class]) continue;
+        if (shell.hidden || shell.alpha <= 0.01
+            || !IDCardGeometryUsable(shell.bounds.size.width, shell.bounds.size.height)
+            || !shell.accessibilityLabel.length)
+            return [self cardReadinessFailure:@"card-shell-geometry" index:valid view:shell];
         valid++;
         CGRect frame = [shell convertRect:shell.bounds toView:self.cardScroll];
         CGRect intersection = CGRectIntersection(frame, self.cardScroll.bounds);
-        if (!CGRectIsNull(intersection) && intersection.size.width >= 44 && intersection.size.height >= 22) visible = YES;
+        // Offscreen descendants may not have completed UIKit's deferred layout.
+        // Validate every shell/model, but require readable viewport text in only
+        // one actually visible card, including nested app/date or privacy text.
+        if (!CGRectIsNull(intersection)
+            && IDCardVisibleAreaUsable(intersection.size.width, intersection.size.height)) {
+            BOOL labelVisible = NO;
+            [self semanticLabelsInView:shell depth:0 visible:&labelVisible];
+            if (labelVisible) visible = YES;
+        }
     }
-    return valid == self.builtCardCount && visible;
+    if (!IDCardsRepresentationUsable(expected, self.builtCardCount, valid, visible))
+        return [self cardReadinessFailure:valid != self.builtCardCount ? @"card-shell-count" : @"no-visible-semantic-card" index:-1 view:self.cardStack];
+    self.cardReadinessDiagnostic = @{ @"reason": @"ready", @"index": @(-1), @"type": @"none", @"width": @0, @"height": @0 };
+    return YES;
 }
