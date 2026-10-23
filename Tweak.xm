@@ -1172,7 +1172,7 @@ static BOOL IDOpenFeedback(NSString *message) {
     if (!hidden && NSThread.isMainThread) {
         IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
         IDCoordinator *state = lease.coordinator;
-        if (state.hiddenNativeList == self && !state.nativeVisibilityUpdating)
+        if (state.hiddenNativeList == (UIView *)self && !state.nativeVisibilityUpdating)
             [state scheduleNativeListVisibility];
     }
 }
@@ -1180,7 +1180,7 @@ static BOOL IDOpenFeedback(NSString *message) {
     %orig;
     IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
     IDCoordinator *state = lease.coordinator;
-    if (state.hiddenNativeList == self && !self.hidden && !state.nativeVisibilityUpdating)
+    if (state.hiddenNativeList == (UIView *)self && !((UIView *)self).hidden && !state.nativeVisibilityUpdating)
         [state scheduleNativeListVisibility];
 }
 %end
