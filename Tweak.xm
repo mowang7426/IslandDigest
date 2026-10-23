@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <math.h>
 #import "IDShared.h"
+#import "IDTextPalette.h"
 #import "IDExperienceLogic.h"
 #import "IDClearLogic.h"
 #import "IDContainedLogic.h"
@@ -49,7 +50,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.6";
+    IDDiagnostics[@"version"] = @"0.3.7";
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -66,7 +67,7 @@ static void IDLoadOptions(void) {
     IDReloadPreferences();
     IDGradientText = IDPref(@"GradientText", NO);
     IDTextShadow = IDPref(@"TextShadow", NO);
-    IDTextPalette = IDStringOption(@"TextPalette", @[@"cyanPurple", @"pinkOrange", @"whiteCyan"], @"cyanPurple");
+    IDTextPalette = IDStringOption(@"TextPalette", IDTextPaletteValues(), @"cyanPurple");
     IDSolidText = IDStringOption(@"SolidText", @[@"label", @"white", @"black"], @"label");
     IDPerformanceDiagnostics = IDPref(@"PerformanceDiagnostics", NO);
     IDEnabled = IDPref(@"Enabled", YES);
@@ -148,7 +149,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.6.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.7.startup-pending";
 #endif
 }
 
