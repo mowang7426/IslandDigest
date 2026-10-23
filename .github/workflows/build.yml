@@ -50,6 +50,8 @@ jobs:
           /tmp/id-enumeration-abi-tests
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/Enumeration.m -o /tmp/id-enumeration-tests
           /tmp/id-enumeration-tests
+          cc -Wall -Wextra -Werror tests/Snapshot.c -o /tmp/id-snapshot-tests
+          /tmp/id-snapshot-tests
           cc -Wall -Wextra -Werror tests/Performance.c -o /tmp/id-performance-tests
           /tmp/id-performance-tests
           cc -Wall -Wextra -Werror tests/Collapse.c -lm -o /tmp/id-collapse-tests
@@ -78,7 +80,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.9', '${{ matrix.scheme }}'], check=True)
+                          '0.3.10', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
