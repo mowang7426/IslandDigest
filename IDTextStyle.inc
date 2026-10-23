@@ -11,29 +11,29 @@ static UIImage *IDGradientStrip(CGFloat width, CGFloat scale) {
     static NSCache<NSString *, UIImage *> *cache;
     if (!cache) { cache = [NSCache new]; cache.countLimit = 48; cache.totalCostLimit = 1024 * 1024; }
     width = MIN(2048, MAX(1, ceil(width * scale) / scale));
-    NSString *key = [NSString stringWithFormat:@"%@/%.2f/%.1f", IDTextPalette, width, scale];
+    const IDTextPaletteSpec *palette = IDTextPaletteForIdentifier(IDTextPalette.UTF8String);
+    NSUInteger pixelWidth = (NSUInteger)llround(width * scale);
+    NSUInteger pixelHeight = (NSUInteger)ceil(scale);
+    NSString *key = [NSString stringWithFormat:@"%s/%lu/%lu/%.17g", palette->identifier,
+        (unsigned long)pixelWidth, (unsigned long)pixelHeight, (double)scale];
     UIImage *image = [cache objectForKey:key];
     if (image) return image;
-    UIColor *first, *last;
-    if ([IDTextPalette isEqualToString:@"pinkOrange"]) {
-        first = [UIColor colorWithRed:1 green:0.68 blue:0.85 alpha:1];
-        last = [UIColor colorWithRed:1 green:0.85 blue:0.58 alpha:1];
-    } else if ([IDTextPalette isEqualToString:@"whiteCyan"]) {
-        first = UIColor.whiteColor; last = [UIColor colorWithRed:0.60 green:1 blue:1 alpha:1];
-    } else {
-        first = [UIColor colorWithRed:0.55 green:1 blue:1 alpha:1];
-        last = [UIColor colorWithRed:0.87 green:0.72 blue:1 alpha:1];
-    }
+    CGFloat components[16] = {0}, locations[4] = {0};
+    for (size_t i = 0; i < palette->count * 4; ++i) components[i] = palette->rgba[i];
+    for (size_t i = 0; i < palette->count; ++i) locations[i] = IDTextPaletteLocation(palette, i);
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, 1), NO, scale);
     CGContextRef context = UIGraphicsGetCurrentContext();
     if (!context) { UIGraphicsEndImageContext(); return nil; }
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGGradientRef gradient = CGGradientCreateWithColors(space, (__bridge CFArrayRef)@[(__bridge id)first.CGColor, (__bridge id)last.CGColor], NULL);
-    CGContextDrawLinearGradient(context, gradient, CGPointZero, CGPointMake(width, 0),
+    CGGradientRef gradient = space ? CGGradientCreateWithColorComponents(space, components, locations, palette->count) : NULL;
+    if (gradient) CGContextDrawLinearGradient(context, gradient, CGPointZero, CGPointMake(width, 0),
         kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
-    image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext(); CGGradientRelease(gradient); CGColorSpaceRelease(space);
-    if (image) [cache setObject:image forKey:key cost:(NSUInteger)(width * scale * ceil(scale) * 4)];
+    image = gradient ? UIGraphicsGetImageFromCurrentImageContext() : nil;
+    UIGraphicsEndImageContext();
+    if (gradient) CGGradientRelease(gradient);
+    if (space) CGColorSpaceRelease(space);
+    if (image.CGImage) [cache setObject:image forKey:key cost:
+        CGImageGetBytesPerRow(image.CGImage) * CGImageGetHeight(image.CGImage)];
     return image;
 }
 @implementation IDNotificationLabel

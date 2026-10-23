@@ -2,6 +2,7 @@
 #import <Preferences/PSSpecifier.h>
 #import <UIKit/UIKit.h>
 #import "../IDShared.h"
+#import "../IDTextPalette.h"
 
 // Present in Preferences runtime (iOS 15–17), omitted by Theos' minimal header.
 @interface PSSpecifier (IDListValues)
@@ -112,7 +113,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     NSString *key = [specifier propertyForKey:@"key"];
     if ([key hasPrefix:@"Panel"] && ![key isEqualToString:@"PanelBlur"]) return @(IDNumberOption(key, [[specifier propertyForKey:@"default"] doubleValue],
         [[specifier propertyForKey:@"min"] doubleValue], [[specifier propertyForKey:@"max"] doubleValue]));
-    if ([key isEqualToString:@"TextPalette"]) return IDStringOption(key, @[@"cyanPurple", @"pinkOrange", @"whiteCyan"], @"cyanPurple");
+    if ([key isEqualToString:@"TextPalette"]) return IDStringOption(key, IDTextPaletteValues(), @"cyanPurple");
     if ([key isEqualToString:@"SolidText"]) return IDStringOption(key, @[@"label", @"white", @"black"], @"label");
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
     if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"three");
@@ -170,7 +171,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.6 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.7 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
@@ -185,7 +186,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[self toggle:@"磨砂背景（默认关闭）" key:@"PanelBlur"]];
     [items addObject:[self group:@"通知文字颜色" footer:@"仅影响插件卡片的标题、副标题和正文；不修改系统文字、分类胶囊或隐私策略。渐变默认关闭，静态无动画。可选择纯白/纯黑搭配轻阴影；渐变不保证所有壁纸的对比度，复杂壁纸建议同时提高背景不透明度。保留 UIKit 多行、大字和 emoji 绘制；没有缓存通知文字图片。"]];
     [items addObject:[self toggle:@"静态渐变文字（默认关闭）" key:@"GradientText"]];
-    [items addObject:[self choice:@"渐变配色" key:@"TextPalette" values:@[@"cyanPurple", @"pinkOrange", @"whiteCyan"] titles:@[@"青色 → 淡紫", @"粉色 → 暖橙", @"白色 → 青色"]]];
+    [items addObject:[self choice:@"渐变配色（双色 / 四色）" key:@"TextPalette" values:IDTextPaletteValues() titles:IDTextPaletteTitles()]];
     [items addObject:[self choice:@"纯色文字（关闭渐变时）" key:@"SolidText" values:@[@"label", @"white", @"black"] titles:@[@"跟随系统（默认）", @"纯白", @"纯黑"]]];
     [items addObject:[self toggle:@"轻阴影增强对比（默认关闭）" key:@"TextShadow"]];
     [items addObject:[self group:@"面板位置与大小（单位：点）" footer:@"锁屏与通知中心共用。顶部偏移从窗口安全区与通知控制器的交集顶部向下计算；默认 220 点是保守预留，不是已验证的时钟避让，UIKit 安全区本身不含锁屏时钟。不会移动或读取时钟视图。如仍挡住时间，请增加顶部偏移。左右边距控制宽度；高度是上限，卡片少时自动缩小。旋转后按实际窗口重新限界，底部预留 110 点给快捷按钮；极小空间保留原生列表。拖动约每 120ms 合并更新，无需注销。"]];
