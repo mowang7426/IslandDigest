@@ -11,10 +11,12 @@ static double IDMonotonic(void) { if (advancing) clockValue += 0.001; return clo
 @interface IDTestRequest : NSObject
 @property(nonatomic, copy) NSString *sectionIdentifier;
 @property(nonatomic, copy) NSString *notificationIdentifier;
+@property(nonatomic, strong) NSDate *timestamp;
 @end
 @implementation IDTestRequest
 @end
 @interface IDTestGroup : NSObject
+@property(nonatomic, copy) NSString *sectionIdentifier;
 @property(nonatomic, strong) id notificationRequests;
 @end
 @implementation IDTestGroup
@@ -63,6 +65,7 @@ static NSMutableArray *requests(NSUInteger count) {
         IDTestRequest *item = [IDTestRequest new];
         item.sectionIdentifier = [NSString stringWithFormat:@"synthetic-app-%lu", (unsigned long)(i % 5)];
         item.notificationIdentifier = [NSString stringWithFormat:@"synthetic-id-%lu", (unsigned long)i];
+        item.timestamp = [NSDate dateWithTimeIntervalSince1970:(NSTimeInterval)i + 1];
         [items addObject:item];
     }
     return items;
@@ -81,7 +84,7 @@ int main(void) { @autoreleasepool {
     NSMutableDictionary *diagnostic = [NSMutableDictionary new]; BOOL complete = NO;
     IDTestMaster *master = [IDTestMaster new];
     IDTestRequest *request = requests(1).firstObject;
-    IDTestGroup *group = [IDTestGroup new]; group.notificationRequests = [NSOrderedSet orderedSetWithArray:@[request]];
+    IDTestGroup *group = [IDTestGroup new]; group.sectionIdentifier = @"wrapper-only-app"; group.notificationRequests = [NSOrderedSet orderedSetWithArray:@[request]];
     IDTestSection *section = [IDTestSection new]; section.allNotificationRequests = @[]; section.notificationGroups = @[group];
     master.allNotificationRequests = @[]; master.sectionLists = @{@"synthetic": @[section]};
     master.incomingSectionList = section; master.historySectionList = section;

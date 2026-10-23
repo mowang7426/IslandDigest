@@ -52,7 +52,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.10";
+    IDDiagnostics[@"version"] = @"0.3.11";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -155,7 +155,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.10.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.11.startup-pending";
 #endif
 }
 

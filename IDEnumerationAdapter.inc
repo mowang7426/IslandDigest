@@ -13,6 +13,18 @@ static BOOL IDEnumerationCollection(id value) {
     return [value isKindOfClass:NSArray.class] || [value isKindOfClass:NSDictionary.class]
         || [value isKindOfClass:NSSet.class] || [value isKindOfClass:NSOrderedSet.class];
 }
+static BOOL IDEnumerationLooksLikeRequest(id value) {
+    /* A section identifier is also present on history/group containers.  Only
+     * admit the canonical request shape: stable notification identity plus the
+     * Foundation timestamp exposed by NCNotificationRequest.  Containers are
+     * therefore traversed until their actual request object is reached. */
+    id section = IDEnumerationRead(value, "sectionIdentifier");
+    id identifier = IDEnumerationRead(value, "notificationIdentifier");
+    id timestamp = IDEnumerationRead(value, "timestamp");
+    return [section isKindOfClass:NSString.class] && section.length
+        && [identifier isKindOfClass:NSString.class] && identifier.length
+        && [timestamp isKindOfClass:NSDate.class];
+}
 static BOOL IDEnumerationNativeCount(id object, NSUInteger *count) {
     Method method = class_getInstanceMethod(object_getClass(object), sel_registerName("notificationCount"));
     if (!method || method_getNumberOfArguments(method) != 2) return NO;
@@ -67,7 +79,7 @@ static void IDEnumerationPush(IDEnumerationCursor *cursor, id value, NSUInteger 
 static BOOL IDEnumerationAdvance(IDEnumerationCursor *cursor, NSMutableDictionary *diagnostic) {
     static const char * const roots[] = { "allNotificationRequests", "_notificationSectionListsForEnumeration",
         "sectionLists", "notificationSections", "incomingSectionList", "historySectionList", "missedSectionList" };
-    static const char * const getters[] = { "allNotificationRequests", "notificationRequests", "filteredNotificationRequests",
+    static const char * const getters[] = { "allNotificationRequests", "notificationRequests", "notificationRequest", "request", "filteredNotificationRequests",
         "hiddenNotificationRequests", "allNotificationGroups", "notificationGroups", "hiddenNotificationGroups" };
     double deadline = IDMonotonic() + 0.002; cursor.slices++;
     @try {
@@ -105,11 +117,10 @@ static BOOL IDEnumerationAdvance(IDEnumerationCursor *cursor, NSMutableDictionar
                 frame.iterator = [frame.value objectEnumerator];
                 continue;
             }
-            id app = IDEnumerationRead(frame.value, "sectionIdentifier");
-            if ([app isKindOfClass:NSString.class] && [app length]) {
+            if (IDEnumerationLooksLikeRequest(frame.value)) {
+                id app = IDEnumerationRead(frame.value, "sectionIdentifier");
                 id identifier = IDEnumerationRead(frame.value, "notificationIdentifier");
-                id identity = [identifier isKindOfClass:NSString.class] && [identifier length]
-                    ? @[app, identifier] : [NSValue valueWithPointer:(__bridge const void *)frame.value];
+                id identity = @[app, identifier];
                 if (![cursor.identities containsObject:identity]) {
                     if (cursor.requests.count >= 20000) { cursor.failure = @"capacity-fallback"; cursor.done = YES; break; }
                     [cursor.identities addObject:identity]; [cursor.requests addObject:frame.value];
