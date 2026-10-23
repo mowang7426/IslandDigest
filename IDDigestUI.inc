@@ -210,8 +210,33 @@
     // Resolve after assigning the bounded viewport frame, including width changes.
     [self.cardScroll setNeedsLayout]; [self.cardScroll layoutIfNeeded];
     [self.cardStack layoutIfNeeded];
-    self.retainedLayoutReady = [self expandedCardsLayoutReady];
+    // Compare cheap identity/bounds/content signatures, not scroll offsets. Scrolling
+    // an already validated list never demands that offscreen cards enter the viewport.
+    BOOL compact = IDPanelCompact(self.coordinator.collapseState);
+    BOOL changed = !self.nativeLayoutSignatureValid
+        || !CGRectEqualToRect(self.nativeLayoutBounds, self.bounds)
+        || !CGSizeEqualToSize(self.nativeViewportSize, self.cardScroll.bounds.size)
+        || !CGSizeEqualToSize(self.nativeContentSize, self.cardScroll.contentSize)
+        || !CGSizeEqualToSize(self.nativeStackSize, self.cardStack.bounds.size)
+        || self.nativeLayoutWindow != self.window || self.nativeLayoutCards != self.coordinator.cards
+        || self.nativeLayoutCount != self.builtCardCount || self.nativeLayoutCompact != compact;
+    if (changed) {
+        self.nativeLayoutSignatureValid = YES;
+        self.nativeLayoutBounds = self.bounds;
+        self.nativeViewportSize = self.cardScroll.bounds.size;
+        self.nativeContentSize = self.cardScroll.contentSize;
+        self.nativeStackSize = self.cardStack.bounds.size;
+        self.nativeLayoutWindow = self.window; self.nativeLayoutCards = self.coordinator.cards;
+        self.nativeLayoutCount = self.builtCardCount; self.nativeLayoutCompact = compact;
+        self.retainedLayoutReady = [self expandedCardsLayoutReady];
+        [self.coordinator scheduleNativeListVisibility];
+    }
     // Never call geometry fitting back from child layout (owner -> fitting -> layout cycle).
+}
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    self.nativeLayoutSignatureValid = NO;
+    [self setNeedsLayout]; // The ensuing actual layout, not a zero-sized fitting pass, rechecks hiding.
 }
 - (void)pinGesture:(UILongPressGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateBegan) return;

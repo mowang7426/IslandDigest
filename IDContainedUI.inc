@@ -3,6 +3,7 @@
     self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.builtCardCount = 0;
     self.retainedLayoutReady = NO;
+    self.nativeLayoutSignatureValid = NO;
     // Scrub synchronously, but retain empty layout shells until the next visible render.
     // Removing hundreds of active constraints during an interactive dismissal is avoidable.
     for (UIView *view in self.cardStack.arrangedSubviews) {

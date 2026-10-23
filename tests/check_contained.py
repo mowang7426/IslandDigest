@@ -18,7 +18,8 @@ for field in ('title', 'subtitle', 'message'):
 assert 'cards.count >= IDContainedLimit' in support
 assert 'notificationIdentifier' in support and 'containsObject:identity' in support
 assert 'IDRead(self.owner, "masterListView")' in coordinator
-assert 'object_getClass(candidate) == nativeClass' in coordinator
+assert '[candidate isKindOfClass:nativeClass]' in coordinator
+assert 'object_getClass(candidate) == nativeClass' not in coordinator
 assert 'isDescendantOfView:candidate' in coordinator
 assert 'view.hidden = self.nativeWasHidden' in coordinator
 assert 'self.hiddenNativeList = nil' in coordinator
@@ -67,7 +68,7 @@ assert 'valid == self.builtCardCount && visible' in ui
 assert 'CGRectIntersection(frame, self.cardScroll.bounds)' in ui
 assert '[digest cardsReadyForNativeHide] && [self.cards isEqual:self.renderedCards]' in coordinator
 assert '&& ownsOrUnclaimed && representationReady && forwardingSupported' in coordinator
-assert 'compact ? capsuleReady : (cardViewportVisible && cardsReady)' in coordinator
+assert 'IDContainedRepresentationReady(compact, capsuleReady, cardViewportVisible, cardsReady)' in coordinator
 assert 'digest.retainedLayoutReady && [digest expandedCardsLayoutReady]' in coordinator
 assert 'IDPanelRetainedHide([digest capsuleReachable]' in coordinator
 assert 'digest.builtCardCount' in coordinator and 'cardsLayoutReady' in coordinator
@@ -85,3 +86,40 @@ print('PASS 0.1.9 render-after-mount, no automatic content inset, actual card/la
 reset = prefs.split('- (void)resetPanelLayout {',1)[1].split('\n}',1)[0]
 assert 'self.layoutChangeGeneration++;' in reset and 'self.layoutChangePending = NO;' in reset
 assert 'if (generation != self.layoutChangeGeneration) return;' in prefs
+
+# 0.3.6 targeted recovery: real post-layout callback, lease-aware reassert,
+# replacement tracking and bounded exact-class hooks; not a global UIView hook.
+assert 'IDContainedReassert(shouldHide' in coordinator
+assert 'self.hiddenNativeList != candidate || leaseLost' in coordinator
+assert 'nativeHideToken.coordinator = self' in coordinator
+assert 'candidate.window == self.owner.viewIfLoaded.window' in coordinator
+assert 'IDCurrentNativeOwner == self' in coordinator
+assert 'nativeLastActiveDecision' in coordinator and 'nativeCandidateClass' in coordinator
+assert 'nativeDecisionStage' in coordinator and 'pending-onscreen-layout' in coordinator
+assert '%hook NCNotificationListView' in main and '%hook UIView' not in main
+assert 'IDMethod(nativeListClass, "setHidden:", "v", 3)' in main
+assert 'IDArgument(nativeListClass, "setHidden:", 2, "B")' in main
+assert 'IDContainedVisibilityEnqueue([self workAllowed]' in main
+assert 'generation != state.presentationGeneration' in main
+callback = main.split('- (void)scheduleNativeListVisibility {', 1)[1].split('- (void)schedulePresentation {',1)[0]
+for forbidden in ('updatePanelGeometry', '[state refresh]', 'layoutIfNeeded', 'scheduleNativeListVisibility];'):
+    assert forbidden not in callback
+assert '[self.coordinator scheduleNativeListVisibility]' in digest
+assert 'self.nativeLayoutCards != self.coordinator.cards' in digest
+assert 'self.nativeLayoutWindow != self.window' in digest
+assert 'self.nativeLayoutSignatureValid = NO' in ui
+# Never synchronize the prohibited 0.3.4 preparation implementation.
+assert 'prepareFirstFrame' not in main + digest + coordinator
+assert 'dispatch_sync' not in main + digest + coordinator
+assert 'valid == self.builtCardCount && visible' in ui  # ANY visible card, not all cards.
+print('PASS 0.3.6 post-layout recovery, native subclass/window/lease/reassert/owner and no-preparation contracts')
+
+# 0.3.6 Settings must expose only the saved verdict's safe scalar fields.
+prefs = (root / 'prefs/IDPrefs.m').read_text()
+for key in ('nativeVisibilityHooks', 'nativeCandidateClass', 'nativeCandidateSameWindow',
+            'nativeCurrentOwner', 'nativeDecisionStage', 'nativeLastActiveDecision'):
+    assert key in prefs, key
+assert '[lastActive isKindOfClass:NSDictionary.class]' in prefs
+assert '[value isKindOfClass:NSString.class]' in prefs
+assert '[value isKindOfClass:NSNumber.class]' in prefs
+print('PASS 0.3.6 Settings current and last-active diagnostics scalar whitelist')
