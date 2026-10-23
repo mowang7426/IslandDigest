@@ -43,7 +43,9 @@
         && ![self.panel.view isDescendantOfView:candidate] && ![candidate isDescendantOfView:self.panel.view];
     NSUInteger totalRequests = 0;
     for (IDGroup *group in self.groups) totalRequests += group.count;
-    BOOL snapshotComplete = totalRequests < IDContainedLimit && self.cards.count < IDContainedLimit;
+    IDDigestView *coverageDigest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
+    BOOL snapshotComplete = IDContainedSnapshotCoverage(self.snapshotRecords.count, totalRequests,
+        self.selectedRequestCount, self.cardPage, self.cards.count, [coverageDigest pageNavigationReady]);
     id currentToken = compatible ? objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey) : nil;
     BOOL ownsOrUnclaimed = !currentToken || currentToken == self.nativeHideToken;
     IDDigestView *digest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
@@ -91,8 +93,8 @@
     self.nativeHideReason = !IDContainedMode ? @"插件内展示已关闭；原生列表保留"
         : !IDHideNative ? @"原生列表保留（可在设置中隐藏）"
         : !currentOwner ? @"当前显示宿主已切换；本列表已释放"
-        : !self.enumerationReliable ? @"通知枚举未验证；原生列表保留"
-        : !snapshotComplete ? @"卡片达到上限；保留原生列表以访问较早通知"
+        : !self.enumerationReliable ? [NSString stringWithFormat:@"通知完整快照尚未验证（%@）；原生列表保留，可访问全部通知", IDDiagnostics[@"enumerationState"] ?: @"capturing"]
+        : !snapshotComplete ? @"完整快照或分页入口尚未就绪；原生列表保留"
         : !ownsOrUnclaimed ? @"原生列表被其他面板持有；保留原生列表"
         : !forwardingSupported ? [NSString stringWithFormat:@"原生列表保留（%@）", actionABIDiagnostic ?: @"原生动作 ABI 不支持"]
         : !compatible ? @"原生列表接口不匹配；保留原生列表"
@@ -145,6 +147,7 @@
     } @finally { self.nativeVisibilityUpdating = NO; }
 }
 - (void)dropContainedContent {
+    [self cancelSnapshot]; // Cancel pending slices and release retained native references too.
     [self restoreNativeList]; // Restore native access before any potentially large privacy walk.
     self.cards = @[];
     self.renderedCards = nil;

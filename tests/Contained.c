@@ -61,6 +61,33 @@ int main(void) {
     assert(!IDContainedVisibilityEnqueue(1,0,1)); ++count;
     assert(!IDContainedVisibilityEnqueue(0,0,0)); ++count;
     assert(IDContainedLimit == 160); ++count;
+    /* 0.3.9: actual UI pagination/coverage predicates. Each index is reachable
+     * exactly once; a full snapshot never depends on a 160-card render cap. */
+    for (size_t n = 1; n <= 5000; ++n) {
+        size_t reached = 0, pages = IDContainedPageCount(n), page = 0;
+        assert(pages > 0 && IDContainedPageClamp(pages + 7, n) == pages - 1);
+        for (size_t p = 0; p < pages; ++p) {
+            size_t remaining = n - p * IDContainedLimit;
+            size_t rendered = remaining < IDContainedLimit ? remaining : IDContainedLimit;
+            assert(page == p);
+            assert(IDContainedSnapshotCoverage(n, n, n, page, rendered, 1));
+            assert(IDContainedShouldHide(1,1,1,1,1,0,IDContainedSnapshotCoverage(n,n,n,page,rendered,1),1,rendered));
+            assert(!IDContainedSnapshotCoverage(n + 1,n,n,page,rendered,1));
+            if (n > IDContainedLimit) assert(!IDContainedSnapshotCoverage(n,n,n,page,rendered,0));
+            reached += rendered; page = IDContainedPageMove(page,n,1); ++count;
+        }
+        assert(reached == n && page == pages - 1);
+        for (size_t p = pages - 1; p; --p) { page = IDContainedPageMove(page,n,-1); assert(page == p - 1); }
+        assert(IDContainedPageMove(0,n,-1) == 0);
+    }
+    /* Selecting one of five apps retains all-source coverage, while a page not
+     * backed by the complete source/group union is never sufficient to hide. */
+    assert(IDContainedSnapshotCoverage(500,500,100,0,100,0)); ++count;
+    assert(IDContainedSnapshotCoverage(500,500,161,1,1,1)); ++count;
+    assert(!IDContainedSnapshotCoverage(500,499,161,1,1,1)); ++count;
+    assert(!IDContainedSnapshotCoverage(500,500,161,1,160,1)); ++count;
+    assert(!IDContainedSnapshotCoverage(500,500,161,2,1,1)); ++count;
+    assert(IDContainedPageCount(0) == 0 && IDContainedPageClamp(10,0) == 0); ++count;
     printf("PASS contained production predicates: %u assertions (not device runtime verification)\n", count);
     return 0;
 }

@@ -32,7 +32,7 @@ static NSString *IDContainedText(id value) {
     if (![value isKindOfClass:NSString.class]) return @"";
     return [value substringToIndex:MIN((NSUInteger)2048, [value length])];
 }
-static NSArray *IDContainedSnapshot(NSSet *requests, NSString *selected, UIViewController *owner) {
+static NSArray *IDContainedSnapshot(NSArray *requests, NSString *selected, UIViewController *owner) {
     NSMutableArray *matching = [NSMutableArray new];
     for (id request in requests) {
         NSString *app = IDRead(request, "sectionIdentifier");

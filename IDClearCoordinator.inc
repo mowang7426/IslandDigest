@@ -47,6 +47,8 @@
 - (NSString *)clearUnavailableReason {
     if (!IDEnabled || !IDGrouping || !IDPref(@"EnableClearing", YES)) return @"清理功能已在设置关闭";
     if (!self.active || self.disabled || !self.owner.viewIfLoaded.window) return @"通知界面不可用";
+    if (!self.snapshotGroups || !self.enumerationReliable || self.snapshotModelRevision != IDModelRevision)
+        return @"完整通知快照尚未就绪；暂不可清理";
     if (![self clearAuthenticated]) return @"请先解锁；无法验证解锁状态时不允许清理";
     id delegate = IDRead(self.owner, "delegate");
     if (!IDClearPairMethod(delegate, IDClearSelector, "v") || !IDClearPairMethod(delegate, IDInteractionSelector, "B"))
