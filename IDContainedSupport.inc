@@ -12,16 +12,20 @@
  * controller is visible (the authenticated/unlocked state). No body is read
  * while locked or when protected data is unavailable.
  */
-static BOOL IDContainedPreviewAllowed(id request, UIViewController *owner) {
-    if (!IDPreviewWhenUnlocked || !NSThread.isMainThread) return NO;
+static NSString *IDContainedPreviewReason(id request, UIViewController *owner) {
+    if (!IDPreviewWhenUnlocked) return @"preview-opt-in-disabled";
+    if (!NSThread.isMainThread) return @"not-main-thread";
     UIApplication *application = UIApplication.sharedApplication;
-    if (!application.protectedDataAvailable || application.applicationState == UIApplicationStateBackground) return NO;
-    if (!owner || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return NO;
+    if (!application.protectedDataAvailable) return @"protected-data-unavailable";
+    if (application.applicationState == UIApplicationStateBackground) return @"application-background";
+    if (!owner || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return @"owner-not-visible";
     id content = IDRead(request, "content");
+    if (!content) return @"content-unavailable";
     id options = IDRead(request, "options");
-    if (!content || !options) return NO;
-    /* contentPreviewSetting remains intentionally uninterpreted. */
-    return YES;
+    if (!options) return @"options-unavailable";
+    /* contentPreviewSetting remains intentionally uninterpreted; the per-app
+     * enum is opaque, so explicit opt-in is not claimed to preserve Never. */
+    return @"policy-unmapped-explicit-opt-in";
 }
 static void IDContainedClearView(UIView *view) {
     view.accessibilityLabel = nil; view.accessibilityValue = nil; view.accessibilityHint = nil;
@@ -59,13 +63,15 @@ static NSArray *IDContainedSnapshot(NSArray *requests, NSString *selected, UIVie
         if ([identities containsObject:identity]) continue;
         [identities addObject:identity];
         id date = IDRead(request, "timestamp");
-        BOOL allowed = NSThread.isMainThread && IDContainedPreviewAllowed(request, owner);
+        NSString *previewReason = IDContainedPreviewReason(request, owner);
+        BOOL allowed = [previewReason isEqualToString:@"policy-unmapped-explicit-opt-in"];
         id content = allowed ? IDRead(request, "content") : nil;
         [cards addObject:@{@"app":app, @"date":[date isKindOfClass:NSDate.class] ? date : NSDate.distantPast,
             @"identity":identity,
             @"title":allowed ? IDContainedText(IDRead(content, "title")) : @"",
             @"subtitle":allowed ? IDContainedText(IDRead(content, "subtitle")) : @"",
             @"body":allowed ? IDContainedText(IDRead(content, "message")) : @"通知内容已隐藏",
+            @"redactionReason":previewReason,
             @"request":request,
             @"redacted":@(!allowed)}];
     }

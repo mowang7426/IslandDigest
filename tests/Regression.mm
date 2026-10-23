@@ -13,6 +13,7 @@
 
 @interface IDTestRequest : NSObject
 @property(nonatomic, copy) NSString *sectionIdentifier;
+@property(nonatomic, copy) NSString *notificationIdentifier;
 @property(nonatomic, strong) NSDate *timestamp;
 @property(nonatomic) BOOL isCriticalAlert;
 @end
@@ -111,6 +112,7 @@ static void IDCheck(BOOL condition, const char *message) {
 static IDTestRequest *IDRequest(const char *identifier, NSTimeInterval timestamp) {
     IDTestRequest *request = [IDTestRequest new];
     request.sectionIdentifier = IDText(identifier);
+    request.notificationIdentifier = [NSString stringWithFormat:@"test-%@-%f", request.sectionIdentifier, timestamp];
     request.timestamp = [NSDate dateWithTimeIntervalSince1970:timestamp];
     return request;
 }
