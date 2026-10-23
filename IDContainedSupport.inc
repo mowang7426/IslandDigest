@@ -27,9 +27,6 @@ static NSString *IDContainedPreviewReason(id request, UIViewController *owner) {
      * enum is opaque, so explicit opt-in is not claimed to preserve Never. */
     return @"policy-unmapped-explicit-opt-in";
 }
-static BOOL IDContainedPreviewAllowed(id request, UIViewController *owner) {
-    return [IDContainedPreviewReason(request, owner) isEqualToString:@"policy-unmapped-explicit-opt-in"];
-}
 static void IDContainedClearView(UIView *view) {
     view.accessibilityLabel = nil; view.accessibilityValue = nil; view.accessibilityHint = nil;
     if ([view isKindOfClass:UILabel.class]) ((UILabel *)view).text = nil;
