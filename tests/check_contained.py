@@ -113,3 +113,13 @@ assert 'prepareFirstFrame' not in main + digest + coordinator
 assert 'dispatch_sync' not in main + digest + coordinator
 assert 'valid == self.builtCardCount && visible' in ui  # ANY visible card, not all cards.
 print('PASS 0.3.6 post-layout recovery, native subclass/window/lease/reassert/owner and no-preparation contracts')
+
+# 0.3.6 Settings must expose only the saved verdict's safe scalar fields.
+prefs = (root / 'prefs/IDPrefs.m').read_text()
+for key in ('nativeVisibilityHooks', 'nativeCandidateClass', 'nativeCandidateSameWindow',
+            'nativeCurrentOwner', 'nativeDecisionStage', 'nativeLastActiveDecision'):
+    assert key in prefs, key
+assert '[lastActive isKindOfClass:NSDictionary.class]' in prefs
+assert '[value isKindOfClass:NSString.class]' in prefs
+assert '[value isKindOfClass:NSNumber.class]' in prefs
+print('PASS 0.3.6 Settings current and last-active diagnostics scalar whitelist')
