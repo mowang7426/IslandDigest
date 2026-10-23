@@ -18,6 +18,7 @@
 #import "IDScrollLogic.h"
 #import "IDCollapseLogic.h"
 #import "IDPerformanceLogic.h"
+#import "IDSnapshotLogic.h"
 static BOOL IDPerformanceDiagnostics = NO, IDGradientText = NO, IDTextShadow = NO;
 static NSString *IDTextPalette = @"cyanPurple", *IDSolidText = @"label";
 static double IDMonotonic(void) {
@@ -51,7 +52,11 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.9";
+    IDDiagnostics[@"version"] = @"0.3.10";
+    IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
+    IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
+    IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
+    IDDiagnostics[@"currentPrefGrouping"] = @(IDPref(@"Grouping", YES));
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
@@ -150,7 +155,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.9.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.10.startup-pending";
 #endif
 }
 
@@ -321,7 +326,7 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, copy) NSArray<IDGroup *> *groups;
 @property(nonatomic, copy) NSArray<NSDictionary *> *cards;
 @property(nonatomic, copy) NSArray<NSDictionary *> *renderedCards;
-@property(nonatomic) BOOL enumerationReliable;
+@property(nonatomic) BOOL enumerationReliable, snapshotSorting;
 @property(nonatomic, strong) IDEnumerationCursor *enumerationCursor;
 @property(nonatomic, strong) id snapshotMaster;
 @property(nonatomic, strong) NSMutableDictionary *buildGroups;
@@ -562,7 +567,9 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)cancelSnapshot {
     self.snapshotGeneration++;
+    if (self.enumerationCursor) IDDiagnostics[@"lastActiveReadCancelReason"] = @"snapshot-invalidated";
     IDEnumerationCancel(self.enumerationCursor);
+    self.snapshotSorting = NO;
     self.enumerationCursor = nil; self.buildGroups = nil; self.buildRecords = nil;
     self.snapshotGroups = nil; self.snapshotRecords = nil; self.enumerationReliable = NO;
     self.snapshotRequests = nil; self.snapshotByApp = nil; self.snapshotMaster = nil;
@@ -572,6 +579,7 @@ static BOOL IDSupplementaryReady(id owner) {
     if (generation != self.snapshotGeneration || ![self workAllowed]) return;
     if (self.snapshotModelRevision != IDModelRevision) { [self cancelSnapshot]; [self refresh]; return; }
     IDEnumerationCursor *cursor = self.enumerationCursor;
+    if (!cursor || cursor.cancelled || self.snapshotSorting) return;
     if (!cursor.done) IDEnumerationAdvance(cursor, IDDiagnostics);
     if (cursor.done && self.snapshotRetries < 2 && ([cursor.failure isEqual:@"model-changed"] || [cursor.failure isEqual:@"collection-mutated"])) {
         self.snapshotRetries++; [self cancelSnapshot]; [self refresh]; return;
@@ -623,12 +631,18 @@ static BOOL IDSupplementaryReady(id owner) {
         }
         [self.buildRecords addObject:@{@"app":identifier, @"date":[date isKindOfClass:NSDate.class] ? date : NSDate.distantPast, @"request":request}];
     }
-    if (!cursor.done || self.buildIndex < cursor.requests.count) {
+    IDSnapshotAction action = IDSnapshotNext(cursor.done, self.buildIndex, cursor.requests.count, self.snapshotSorting);
+    if (action == IDSnapshotPending) {
+        IDDiagnostics[@"enumerationComplete"] = @NO;
+        IDDiagnostics[@"enumerationState"] = cursor.done ? @"building" : @"capturing";
         __weak IDCoordinator *weakSelf = self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             [weakSelf continueSnapshot:generation];
-        }); // Yield the run loop between finite slices; not a model polling timer.
+        }); // Yield between finite slices; pending is NEVER an empty final snapshot.
+        return;
     }
+    if (action != IDSnapshotSort) return;
+    self.snapshotSorting = YES;
     // Only immutable app/date records are sorted on a worker. Native request
     // references are opaque payloads: never invoke a native getter off main.
     NSArray *records = [self.buildRecords copy];
@@ -647,6 +661,8 @@ static BOOL IDSupplementaryReady(id owner) {
             state.snapshotRequests = allRequests; state.snapshotByApp = byApp;
             [state finishSnapshot];
             state.enumerationReliable = cursor.reliable;
+            IDDiagnostics[@"lastActiveReadCompletion"] = cursor.reliable ? @"complete" : @"incomplete";
+            IDDiagnostics[@"lastActiveReadCancelReason"] = cursor.failure ?: @"none";
             IDDiagnostics[@"enumerationComplete"] = @(cursor.reliable);
             IDDiagnostics[@"enumerationState"] = cursor.failure ?: (!cursor.supported ? @"unsupported" : cursor.unread ? @"unread-shape" : ordered.count ? @"read" : @"supported-empty");
             state.enumerationCursor = nil; state.buildGroups = nil; state.buildRecords = nil;
@@ -686,6 +702,8 @@ static BOOL IDSupplementaryReady(id owner) {
         self.snapshotMaster = master; self.snapshotModelRevision = IDModelRevision;
         self.snapshotOptionsRevision = IDOptionsRevision;
         self.enumerationCursor = IDEnumerationBegin(master);
+        IDDiagnostics[@"enumerationComplete"] = @NO;
+        IDDiagnostics[@"enumerationState"] = @"capturing";
         NSUInteger generation = ++self.snapshotGeneration;
         __weak IDCoordinator *weakSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf continueSnapshot:generation]; });
@@ -1001,8 +1019,12 @@ static BOOL IDSupplementaryReady(id owner) {
         double snapshotStarted = IDMonotonic();
         NSArray<IDGroup *> *groups = [self snapshot];
         IDRecordPerformance(@"snapshot", snapshotStarted);
-        if (!self.snapshotGroups) { [self updateNativeListVisibility]; return; }
-        BOOL unchanged = self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
+    BOOL snapshotPending = !self.snapshotGroups;
+        if (snapshotPending) {
+            IDDiagnostics[@"enumerationComplete"] = @NO;
+            IDStatus(@"reading-notifications", @"通知读取中；原生列表保留，尚未确认空列表");
+        }
+        BOOL unchanged = !snapshotPending && self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
         for (NSUInteger index = 0; index < groups.count; index++) {
             IDGroup *group = groups[index];
@@ -1041,7 +1063,7 @@ static BOOL IDSupplementaryReady(id owner) {
             [self disable];
             return;
         }
-        if (groups.count == 0 && !IDContainedMode) {
+        if (groups.count == 0 && !IDContainedMode && !snapshotPending) {
             if (self.inserted) [self recover];
             BOOL supported = self.enumerationReliable;
             IDStatus(supported ? @"waiting-notifications" : @"enumeration-unavailable",

@@ -143,6 +143,46 @@ extern "C" int IDRunRegression(void) {
                 "unfinished startup is detected before hook installation");
             unlink(marker.fileSystemRepresentation);
             IDFilteringReady = YES;
+            // Exercise the real coordinator, not only IDEnumerationAdvance: a pending
+            // 64-operation slice must not dispatch a sort or clear its cursor.
+            NSMutableArray *many = [NSMutableArray new];
+            for (NSUInteger i = 0; i < 180; i++) [many addObject:IDRequest("app.many", i + 1)];
+            IDTestOwner *largeOwner = nil;
+            IDCoordinator *large = IDFixture(&largeOwner, many);
+            UIWindow *testWindow = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 390, 800)];
+            testWindow.rootViewController = largeOwner;
+            [testWindow makeKeyAndVisible];
+            large.active = YES;
+            [large snapshot];
+            NSUInteger largeGeneration = large.snapshotGeneration;
+            [large continueSnapshot:largeGeneration];
+            IDCheck(large.enumerationCursor && !large.enumerationCursor.done
+                && !large.snapshotGroups && !large.snapshotSorting
+                && [IDDiagnostics[@"enumerationState"] isEqual:@"capturing"],
+                "caller preserves unfinished multi-slice cursor without early commit");
+            NSUInteger passes = 0;
+            while (large.enumerationCursor && !large.enumerationCursor.done && ++passes < 1000)
+                [large continueSnapshot:largeGeneration];
+            IDCheck(passes > 1 && large.enumerationCursor && large.enumerationCursor.done
+                && large.enumerationCursor.requests.count == many.count,
+                "caller traverses more than 64 native operations over multiple slices");
+            // Worker sorting and main-queue publication happen only after traversal.
+            NSDate *until = [NSDate dateWithTimeIntervalSinceNow:8];
+            while (!large.snapshotGroups && [until timeIntervalSinceNow] > 0)
+                [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+            IDCheck(large.snapshotGroups.count == 1 && large.snapshotRecords.count == many.count
+                && !large.enumerationCursor && large.enumerationReliable,
+                "caller commits a complete snapshot exactly after final slice");
+            [large cancelSnapshot];
+            [large snapshot];
+            NSUInteger cancelledGeneration = large.snapshotGeneration;
+            [large continueSnapshot:cancelledGeneration];
+            IDCheck(large.enumerationCursor && !large.enumerationCursor.done,
+                "new generation remains pending after first slice");
+            [large cancelSnapshot];
+            [large continueSnapshot:cancelledGeneration];
+            IDCheck(!large.snapshotGroups && !large.enumerationCursor && !large.snapshotSorting,
+                "cancelled generation cannot publish stale snapshot or enqueue sort");
             IDTestOwner *owner = nil;
             NSArray *requests = @[IDRequest("app.a", 1), IDRequest("app.b", 2), IDRequest("app.b", 3)];
             IDCoordinator *state = IDFixture(&owner, requests);

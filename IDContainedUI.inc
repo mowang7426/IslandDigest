@@ -122,7 +122,8 @@
         }
     }
     if (!rendered) {
-        NSString *empty = state.enumerationReliable ? @"当前范围暂无通知" : @"系统通知枚举接口不可用；请使用原生列表";
+        NSString *empty = state.enumerationCursor ? @"通知读取中；原生列表保留" :
+            state.enumerationReliable ? @"当前范围暂无通知" : @"通知读取未完成；请使用原生列表";
         [self.cardStack addArrangedSubview:[self cardLabel:empty style:UIFontTextStyleBody color:UIColor.secondaryLabelColor]];
     }
     if (state.selectedRequestCount > IDContainedLimit) {
