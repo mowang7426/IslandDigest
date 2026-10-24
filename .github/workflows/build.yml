@@ -38,7 +38,55 @@ jobs:
           xcodebuild -version
 
       - name: Check source contracts
-        run: python3 tests/check_source.py
+        run: |
+          python3 tests/check_source.py
+          python3 tests/check_contained.py
+          python3 tests/check_collapse.py
+          python3 tests/check_performance_text.py
+          python3 tests/check_text_palette.py
+          python3 tests/check_stable_refresh.py
+          python3 tests/check_pull_trigger.py
+          python3 tests/check_collapse_diagnostics.py
+          python3 tests/check_presentation_runtime.py
+          python3 tests/check_primary_cycle.py
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/RuntimeHookAudit.m -o /tmp/id-runtime-hook-audit-tests
+          /tmp/id-runtime-hook-audit-tests
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/PrimaryDispatch.m -o /tmp/id-primary-dispatch-tests
+          /tmp/id-primary-dispatch-tests
+          cc -Wall -Wextra -Werror tests/PrimaryCycle.c -lm -o /tmp/id-primary-cycle-tests
+          /tmp/id-primary-cycle-tests
+          cc -Wall -Wextra -Werror tests/CollapseDiagnostics.c -o /tmp/id-collapse-diagnostic-tests
+          /tmp/id-collapse-diagnostic-tests
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/CollapseDiagnostics.m -o /tmp/id-collapse-diagnostic-module-tests
+          /tmp/id-collapse-diagnostic-module-tests
+          cc -Wall -Wextra -Werror tests/StableRefresh.c -lm -o /tmp/id-stable-refresh-tests
+          /tmp/id-stable-refresh-tests
+          cc -Wall -Wextra -Werror tests/FirstFrameHandoff.c -o /tmp/id-first-frame-handoff-tests
+          /tmp/id-first-frame-handoff-tests
+          cc -Wall -Wextra -Werror tests/TextPalette.c -lm -o /tmp/id-text-palette-tests
+          /tmp/id-text-palette-tests
+          cc -Wall -Wextra -Werror tests/EnumerationABI.c -o /tmp/id-enumeration-abi-tests
+          /tmp/id-enumeration-abi-tests
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/Enumeration.m -o /tmp/id-enumeration-tests
+          /tmp/id-enumeration-tests
+          cc -Wall -Wextra -Werror tests/Snapshot.c -o /tmp/id-snapshot-tests
+          /tmp/id-snapshot-tests
+          cc -Wall -Wextra -Werror tests/Performance.c -o /tmp/id-performance-tests
+          /tmp/id-performance-tests
+          cc -Wall -Wextra -Werror tests/Collapse.c -lm -o /tmp/id-collapse-tests
+          /tmp/id-collapse-tests
+          cc -Wall -Wextra -Werror tests/Scroll.c -lm -o /tmp/id-scroll-tests
+          /tmp/id-scroll-tests
+          cc -Wall -Wextra -Werror tests/Contained.c -o /tmp/id-contained-tests
+          /tmp/id-contained-tests
+          cc -Wall -Wextra -Werror tests/CardReadiness.c -lm -o /tmp/id-card-readiness-tests
+          /tmp/id-card-readiness-tests
+          cc -Wall -Wextra -Werror tests/Layout.c -lm -o /tmp/id-layout-tests
+          /tmp/id-layout-tests
+          cc -Wall -Wextra -Werror tests/Experience.c -o /tmp/id-experience-tests
+          /tmp/id-experience-tests
+          cc -Wall -Wextra -Werror tests/Clear.c -o /tmp/id-clear-tests
+          /tmp/id-clear-tests
 
       - name: Build package
         run: make package FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
@@ -51,7 +99,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.1.5', '${{ matrix.scheme }}'], check=True)
+                          '0.3.18', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
