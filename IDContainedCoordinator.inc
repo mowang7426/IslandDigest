@@ -39,6 +39,26 @@
         if (ancestor.hidden || ancestor.alpha <= 0.01) compatible = NO;
     }
     if (ancestor || candidate.alpha <= 0.01) compatible = NO;
+    // High-risk opt-in: hide the exact current owner's typed list before
+    // enumeration, card rendering, or panel layout can complete.
+    if (IDAlwaysHideNative && compatible && IDCurrentNativeOwner == self) {
+        id token = objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey);
+        if (!token || token == self.nativeHideToken) {
+            if (self.hiddenNativeList && self.hiddenNativeList != candidate) [self restoreNativeList];
+            if (!self.hiddenNativeList) {
+                self.nativeWasHidden = candidate.hidden; self.hiddenNativeList = candidate;
+                self.nativeHideToken = [IDNativeHideLease new]; self.nativeHideToken.coordinator = self;
+                objc_setAssociatedObject(candidate, &IDNativeHideOwnerKey, self.nativeHideToken, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            candidate.hidden = YES;
+            IDDiagnostics[@"alwaysHideActive"] = @YES;
+            IDDiagnostics[@"nativeHidden"] = @YES;
+            IDDiagnostics[@"nativeHideSupported"] = @YES;
+            IDDiagnostics[@"nativeDecisionStage"] = @"always-hide-immediate";
+            IDDiagnostics[@"nativeHideReason"] = @"始终隐藏模式：已立即隐藏精确原生列表；卡片/面板仍可为空白";
+            return;
+        }
+    }
     BOOL separate = self.overlay && self.inserted && self.panel.isViewLoaded && self.panel.view.superview
         && ![self.panel.view isDescendantOfView:candidate] && ![candidate isDescendantOfView:self.panel.view];
     NSUInteger totalRequests = 0;
@@ -80,6 +100,7 @@
         candidate.hidden)) candidate.hidden = YES;
     IDDiagnostics[@"containedEnabled"] = @(IDContainedMode);
     IDDiagnostics[@"hideNativeRequested"] = @(IDHideNative);
+    IDDiagnostics[@"alwaysHideActive"] = @(IDAlwaysHideNative);
     IDDiagnostics[@"nativeHideSupported"] = @(supported);
     IDDiagnostics[@"nativeHidden"] = @(self.hiddenNativeList == candidate && candidate.hidden
         && self.nativeHideToken && objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey) == self.nativeHideToken);

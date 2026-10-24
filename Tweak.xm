@@ -30,7 +30,7 @@ static double IDMonotonic(void) {
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
-static BOOL IDContainedMode = YES, IDHideNative = NO;
+static BOOL IDContainedMode = YES, IDHideNative = NO, IDAlwaysHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
 static CGFloat IDPanelOpacity = 0;
 static BOOL IDPanelBlur = NO;
@@ -53,7 +53,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.12";
+    IDDiagnostics[@"version"] = @"0.3.13";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -88,6 +88,7 @@ static void IDLoadOptions(void) {
     IDRememberFilter = IDPref(@"RememberFilter", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
     IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
+    IDAlwaysHideNative = IDPref(@"AlwaysHideNativeList", NO) && IDHideNative;
     IDSortMode = [@[@"recent", @"count", @"name"] indexOfObject:IDStringOption(@"SortMode", @[@"recent", @"count", @"name"], @"recent")];
     IDPanelTopOffset = IDNumberOption(@"PanelTopOffset", 220, 0, 420);
     IDPanelSideInset = IDNumberOption(@"PanelSideInset", 8, 8, 64);
@@ -156,7 +157,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.12.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.13.startup-pending";
 #endif
 }
 
@@ -362,6 +363,7 @@ static NSArray *IDItems(id object) {
 - (void)recordFirstFrameHandoff;
 - (void)scrubFirstFrameHandoff;
 - (void)scheduleNativeListVisibility;
+- (void)assertAlwaysHideNativeList;
 @property(nonatomic, copy) NSString *nativeHideReason;
 - (void)restoreNativeList;
 - (void)updateNativeListVisibility;
@@ -848,6 +850,37 @@ static BOOL IDSupplementaryReady(id owner) {
     IDDiagnostics[@"firstFrameHandoff"] = @"warm-hidden";
     IDDiagnostics[@"firstHideMs"] = @0;
 }
+- (void)assertAlwaysHideNativeList {
+    if (!NSThread.isMainThread || !IDAlwaysHideNative || !IDContainedMode || !IDEnabled
+        || !IDGrouping || !self.active || self.disabled || !self.owner.isViewLoaded
+        || self.owner.viewIfLoaded.hidden || self.owner.viewIfLoaded.window.hidden) return;
+    UIView *candidate = [IDRead(self.owner, "masterListView") isKindOfClass:UIView.class]
+        ? IDRead(self.owner, "masterListView") : nil;
+    Class nativeClass = objc_getClass("NCNotificationListView");
+    UIWindow *window = self.owner.viewIfLoaded.window;
+    BOOL valid = candidate && nativeClass && [candidate isKindOfClass:nativeClass]
+        && candidate != self.owner.view && candidate.window == window
+        && [candidate isDescendantOfView:self.owner.view]
+        && candidate.bounds.size.width > 0 && candidate.bounds.size.height > 0;
+    if (!valid || (IDCurrentNativeOwner && IDCurrentNativeOwner != self)) return;
+    id currentToken = objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey);
+    if (currentToken && currentToken != self.nativeHideToken) return;
+    if (self.hiddenNativeList && self.hiddenNativeList != candidate) [self restoreNativeList];
+    if (!self.hiddenNativeList) {
+        self.nativeWasHidden = candidate.hidden;
+        self.hiddenNativeList = candidate;
+        self.nativeHideToken = [IDNativeHideLease new];
+        self.nativeHideToken.coordinator = self;
+        objc_setAssociatedObject(candidate, &IDNativeHideOwnerKey, self.nativeHideToken, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    candidate.hidden = YES;
+    self.observedNativeList = candidate;
+    IDDiagnostics[@"alwaysHideActive"] = @YES;
+    IDDiagnostics[@"nativeHidden"] = @YES;
+    IDDiagnostics[@"nativeDecisionStage"] = @"always-hide-immediate";
+    IDDiagnostics[@"nativeHideReason"] = @"始终隐藏模式：精确宿主原生列表已立即隐藏；插件卡片仍在刷新";
+}
+
 - (void)scheduleNativeListVisibility {
 
     if (!IDContainedVisibilityEnqueue([self workAllowed], self.nativeVisibilityPending, self.nativeVisibilityUpdating)) return;
@@ -947,6 +980,10 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.active) return;
     self.dismissed = NO;
     self.active = YES;
+    // The lifecycle owner is authoritative before the async refresh selector.
+    // This is deliberately a single typed getter: no window/view enumeration.
+    IDCurrentNativeOwner = self;
+    [self assertAlwaysHideNativeList];
     [self tryFirstFrameHandoff];
     self.appearanceEpoch = ++IDAppearanceEpoch;
     self.openingPending = YES;
@@ -1318,9 +1355,12 @@ static BOOL IDOpenFeedback(NSString *message) {
     IDLog("owner loaded; panel deferred");
 }
 - (void)viewWillAppear:(BOOL)animated {
-    %orig;
+    // Claim and hide the exact native candidate before UIKit's appearance pass.
     IDCoordinator *state = IDEnsureState(self);
     [state beginAppearance];
+    [state assertAlwaysHideNativeList];
+    %orig;
+    [state assertAlwaysHideNativeList];
     [state tryFirstFrameHandoff];
 }
 - (void)viewDidAppear:(BOOL)animated {
@@ -1392,16 +1432,20 @@ static BOOL IDOpenFeedback(NSString *message) {
     if (!hidden && NSThread.isMainThread) {
         IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
         IDCoordinator *state = lease.coordinator;
-        if (state.hiddenNativeList == (UIView *)self && !state.nativeVisibilityUpdating)
-            [state scheduleNativeListVisibility];
+        if (state.hiddenNativeList == (UIView *)self && !state.nativeVisibilityUpdating) {
+            if (IDAlwaysHideNative) ((UIView *)self).hidden = YES;
+            else [state scheduleNativeListVisibility];
+        }
     }
 }
 - (void)layoutSubviews {
     %orig;
     IDNativeHideLease *lease = objc_getAssociatedObject(self, &IDNativeHideOwnerKey);
     IDCoordinator *state = lease.coordinator;
-    if (state.hiddenNativeList == (UIView *)self && !((UIView *)self).hidden && !state.nativeVisibilityUpdating)
-        [state scheduleNativeListVisibility];
+    if (state.hiddenNativeList == (UIView *)self && !((UIView *)self).hidden && !state.nativeVisibilityUpdating) {
+        if (IDAlwaysHideNative) ((UIView *)self).hidden = YES;
+        else [state scheduleNativeListVisibility];
+    }
 }
 %end
 %end

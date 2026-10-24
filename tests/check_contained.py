@@ -42,7 +42,7 @@ for forbidden in ('writeToFile', 'IDWritePreference', 'NSUserDefaults', 'NSLog',
 print('PASS contained privacy/hide/source guardrails (not native runtime verification)')
 
 prefs = (root/"prefs/IDPrefs.m").read_text()
-for key in ("ContainedMode", "HideNativeList", "containedEnabled", "hideNativeRequested", "nativeHideSupported", "nativeHidden", "nativeHideReason", "previewPolicyReason", "cardsRendered", "cardsRedacted"):
+for key in ("ContainedMode", "HideNativeList", "AlwaysHideNativeList", "containedEnabled", "hideNativeRequested", "nativeHideSupported", "nativeHidden", "nativeHideReason", "previewPolicyReason", "cardsRendered", "cardsRedacted"):
     assert f'@"{key}"' in prefs
 assert "snapshotComplete" in coordinator
 assert "IDNativeHideOwnerKey" in coordinator
