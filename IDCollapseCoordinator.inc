@@ -43,7 +43,9 @@
     self.collapseState = IDPanelExpanded;
     self.renderAfterCollapse = NO;
     self.collapseGeometryAllowed = NO;
-    if (self.panel.isViewLoaded) {
+    // Inactive teardown must cancel state, not expand retained UI or rebuild
+    // blur/constraints. The next visible render reconciles presentation.
+    if (self.active && !self.dismissed && self.panel.isViewLoaded) {
         [(IDDigestView *)self.panel.view updateCollapsePresentation];
         [self updatePanelGeometry];
     }
