@@ -2,6 +2,8 @@
  * are eligible (including Apple's subclasses). Never hide a window, owner root,
  * banner, guessed collection view or an ancestor of our independent panel. */
 - (void)restoreNativeList {
+    double perfStarted = IDPerformanceStart();
+    @try {
     UIView *view = self.hiddenNativeList;
     if (view && self.nativeHideToken && objc_getAssociatedObject(view, &IDNativeHideOwnerKey) == self.nativeHideToken) {
         // Clear the lease before restoring: the precise native setHidden: hook must
@@ -13,6 +15,8 @@
     self.hiddenNativeList = nil;
     IDDiagnostics[@"nativeHidden"] = @NO;
     IDDiagnostics[@"nativeDecisionStage"] = self.active ? @"active-restored" : @"inactive-restored";
+
+    } @finally { IDRecordPerformance(@"restoreNative", perfStarted); }
 }
 - (void)updateNativeListVisibility {
     if (!NSThread.isMainThread || self.nativeVisibilityUpdating) return;
@@ -165,10 +169,15 @@
         @"stackHeight": @(digest.cardStack.bounds.size.height),
         @"reason": self.nativeHideReason ?: @"unknown"
     };
-    if (IDContainedMode && digest.cardNotice) digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
+    if (IDContainedMode && digest.cardNotice) {
+        digest.cardContentDirty = YES;
+        digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
+    }
     } @finally { self.nativeVisibilityUpdating = NO; }
 }
 - (void)dropContainedContent {
+    double perfStarted = IDPerformanceStart();
+    @try {
     [self cancelSnapshot]; // Cancel pending slices
     if (!UIApplication.sharedApplication.protectedDataAvailable) [self invalidateFirstFrameHandoff];
     // Release retained native references too.
@@ -177,4 +186,6 @@
     self.pendingActionRequest = nil; self.pendingAction = nil;
     self.renderedCards = nil;
     if (self.panel.isViewLoaded) [(IDDigestView *)self.panel.view dropCards];
+
+    } @finally { IDRecordPerformance(@"dropContent", perfStarted); }
 }

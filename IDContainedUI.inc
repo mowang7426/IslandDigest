@@ -1,4 +1,9 @@
 - (void)dropCards {
+    double perfStarted = IDPerformanceStart();
+    @try {
+    // Clean retained shells contain no text, AX payload, model or actions.
+    // Repeated inactive model changes must not recurse through them again.
+    if (!self.cardContentDirty) return;
     // A snapshot rebuild must not retarget a finger already down to a new request.
     self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.builtCardCount = 0;
@@ -14,6 +19,9 @@
     }
     self.cardScroll.hidden = YES; // Hide one viewport, not 160 arranged views/UISV-hiding constraints.
     self.cardNotice.text = nil;
+    self.cardContentDirty = NO; // Never clear before the full privacy walk finishes.
+
+    } @finally { IDRecordPerformance(@"scrubCards", perfStarted); }
 }
 - (UILabel *)cardLabel:(NSString *)text style:(UIFontTextStyle)style color:(UIColor *)color {
     UILabel *label = [UILabel new]; label.text = text; label.numberOfLines = 0;
@@ -43,6 +51,7 @@
         && [self.nextPageButton actionsForTarget:state forControlEvent:UIControlEventTouchUpInside].count > 0;
 }
 - (void)showCards {
+    self.cardContentDirty = YES; // Includes retained-card reuse, empty states and paging controls.
     self.previousPageButton = nil; self.nextPageButton = nil;
     CGPoint previousOffset = self.cardScroll.contentOffset;
     NSArray<UIView *> *previousViews = self.cardStack.arrangedSubviews.copy;
@@ -130,6 +139,11 @@
                 // First operation is visible feedback; native action/auth is secondary.
                 IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
                 BOOL opened = canOpen && [weakCoordinator openCardRequest:cardModel[@"request"]];
+                // Native opening can synchronously dismiss/scrub this shell. Do not
+                // repopulate AX after that privacy boundary (or on a replaced shell).
+                if (!weakShell.openAction) return;
+                if (weakCoordinator.panel.isViewLoaded)
+                    ((IDDigestView *)weakCoordinator.panel.view).cardContentDirty = YES;
                 if (!opened) {
                     weakShell.accessibilityValue = @"打开通知不可用";
                     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"打开通知不可用");
