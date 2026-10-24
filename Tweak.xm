@@ -46,6 +46,7 @@ static NSInteger IDGridColumns = 3;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 #include "IDCollapseDiagnostics.inc"
+static double IDPerformanceStart(void) { return IDPerformanceDiagnostics ? IDMonotonic() : 0; }
 static void IDRecordPerformance(NSString *stage, double started) {
     if (!IDPerformanceDiagnostics) return;
     double ms = (IDMonotonic() - started) * 1000;
@@ -186,7 +187,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.21.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.22.startup-pending";
 #endif
 }
 
@@ -331,6 +332,8 @@ static NSArray *IDItems(id object) {
 @property(nonatomic, strong) UITapGestureRecognizer *cardTap;
 @property(nonatomic) CGFloat cardTapStartOffset;
 @property(nonatomic) NSUInteger builtCardCount;
+// Main-thread dirty bit: set BEFORE any card/notice/AX/action write, cleared only after synchronous scrub.
+@property(nonatomic) BOOL cardContentDirty;
 @property(nonatomic) BOOL nativeLayoutSignatureValid;
 @property(nonatomic) CGRect nativeLayoutBounds;
 @property(nonatomic) CGSize nativeViewportSize;
@@ -621,7 +624,12 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)cancelSnapshot {
-    self.snapshotGeneration++;
+    double perfStarted = IDPerformanceStart();
+    @try {
+    self.snapshotGeneration++; // Always invalidate queued slices, even for an already empty snapshot.
+    if (!self.enumerationCursor && !self.snapshotSorting && !self.buildGroups && !self.buildRecords
+        && !self.snapshotGroups && !self.snapshotRecords && !self.snapshotRequests && !self.snapshotByApp
+        && !self.snapshotMaster && !self.enumerationReliable && self.selectedRequestCount == 0) return;
     if (self.enumerationCursor) IDDiagnostics[@"lastActiveReadCancelReason"] = @"snapshot-invalidated";
     IDEnumerationCancel(self.enumerationCursor);
     self.snapshotSorting = NO;
@@ -629,6 +637,8 @@ static BOOL IDSupplementaryReady(id owner) {
     self.snapshotGroups = nil; self.snapshotRecords = nil; self.enumerationReliable = NO;
     self.snapshotRequests = nil; self.snapshotByApp = nil; self.snapshotMaster = nil;
     self.selectedRequestCount = 0;
+
+    } @finally { IDRecordPerformance(@"cancelSnapshot", perfStarted); }
 }
 - (void)continueSnapshot:(NSUInteger)generation {
     if (generation != self.snapshotGeneration || ![self workAllowed]) return;
@@ -858,6 +868,7 @@ static BOOL IDSupplementaryReady(id owner) {
     [digest dropCards];
     digest.cardScroll.hidden = NO;
     digest.cardNotice.hidden = NO;
+    digest.cardContentDirty = YES; // Handoff writes a notice even while card shells remain scrubbed.
     digest.cardNotice.text = @"通知卡片正在刷新；内容已按隐私策略隐藏";
 }
 - (void)tryFirstFrameHandoff {
@@ -1052,11 +1063,11 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)beginAppearance {
-    IDAuditPresentationRuntime(self.owner);
     if (self.active) {
         [self recordCollapseDiagnostic:@"beginAppearance" reason:@"already-active" consumed:NO];
         return;
     }
+    IDAuditPresentationRuntime(self.owner);
     self.collapseState = IDStablePresentationState(IDPresentationCycle, IDCollapseOnPresentation && IDContainedMode);
     [self recordCollapseDiagnostic:@"beginAppearance" reason:!IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : !IDPresentationCycle.live ? @"no-live-cycle" : @"cycle-applied-before-mount"
         consumed:IDCollapseOnPresentation && IDContainedMode && IDPresentationCycle.live];
@@ -1117,6 +1128,8 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)resetFilter {
+    double perfStarted = IDPerformanceStart();
+    @try {
     self.selected = nil;
     if (self.disabled) {
         [self recover];
@@ -1127,6 +1140,8 @@ static BOOL IDSupplementaryReady(id owner) {
         return;
     }
     if (!self.disabled && self.active) [self render];
+
+    } @finally { IDRecordPerformance(@"restoreFilter", perfStarted); }
 }
 
 - (void)recover {
@@ -1492,10 +1507,21 @@ static BOOL IDOpenFeedback(NSString *message) {
     } else if (state.hiddenNativeList) [state restoreNativeList];
 }
 - (void)viewWillDisappear:(BOOL)animated {
-    IDCoordinator *state = IDState(self);
-    @try { [state endAppearance]; }
-    @catch (NSException *exception) { [state disable]; }
-    %orig;
+    // Owner hook only: this does not measure every ordinary app background transition.
+    double totalStarted = IDPerformanceStart();
+    double preStarted = IDPerformanceStart();
+    @try {
+        IDCoordinator *state = IDState(self);
+        @try { [state endAppearance]; }
+        @catch (NSException *exception) { [state disable]; }
+        IDRecordPerformance(@"ownerWillDisappearPre", preStarted);
+        double origStarted = IDPerformanceStart();
+        @try { %orig; }
+        @finally { IDRecordPerformance(@"ownerWillDisappearOrig", origStarted); }
+        double postStarted = IDPerformanceStart();
+        // No UIKit work added after Apple's callback.
+        IDRecordPerformance(@"ownerWillDisappearPost", postStarted);
+    } @finally { IDRecordPerformance(@"ownerWillDisappearTotal", totalStarted); }
 }
 - (void)insertNotificationRequest:(id)request {
     %orig;

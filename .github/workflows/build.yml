@@ -40,6 +40,9 @@ jobs:
       - name: Check source contracts
         run: |
           python3 tests/run_dismissal_fixture.py
+          python3 tests/run_cleanup_fixture.py
+          python3 tests/run_performance_fixture.py
+          python3 tests/check_transition_performance.py
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/DeferredStatus.m -o /tmp/id-deferred-status-tests
           /tmp/id-deferred-status-tests
           python3 tests/check_settings_ui.py
@@ -106,7 +109,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.21', '${{ matrix.scheme }}'], check=True)
+                          '0.3.22', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

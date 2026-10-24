@@ -40,6 +40,9 @@ static NSString *IDContainedPreviewReason(id request, UIViewController *owner) {
 }
 static void IDContainedClearView(UIView *view) {
     view.accessibilityLabel = nil; view.accessibilityValue = nil; view.accessibilityHint = nil;
+    view.accessibilityCustomActions = nil;
+    if ([view isKindOfClass:UIControl.class])
+        [(UIControl *)view removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
     if ([view isKindOfClass:UILabel.class]) ((UILabel *)view).text = nil;
     for (UIView *child in view.subviews) IDContainedClearView(child);
 }
