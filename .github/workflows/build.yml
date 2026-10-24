@@ -46,6 +46,11 @@ jobs:
           python3 tests/check_text_palette.py
           python3 tests/check_stable_refresh.py
           python3 tests/check_pull_trigger.py
+          python3 tests/check_collapse_diagnostics.py
+          cc -Wall -Wextra -Werror tests/CollapseDiagnostics.c -o /tmp/id-collapse-diagnostic-tests
+          /tmp/id-collapse-diagnostic-tests
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/CollapseDiagnostics.m -o /tmp/id-collapse-diagnostic-module-tests
+          /tmp/id-collapse-diagnostic-module-tests
           cc -Wall -Wextra -Werror tests/StableRefresh.c -lm -o /tmp/id-stable-refresh-tests
           /tmp/id-stable-refresh-tests
           cc -Wall -Wextra -Werror tests/FirstFrameHandoff.c -o /tmp/id-first-frame-handoff-tests
@@ -86,7 +91,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.15', '${{ matrix.scheme }}'], check=True)
+                          '0.3.16', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

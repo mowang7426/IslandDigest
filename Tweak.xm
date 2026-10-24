@@ -42,6 +42,7 @@ static NSInteger IDSortMode;
 static NSInteger IDGridColumns = 3;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
+#include "IDCollapseDiagnostics.inc"
 static void IDRecordPerformance(NSString *stage, double started) {
     if (!IDPerformanceDiagnostics) return;
     double ms = (IDMonotonic() - started) * 1000;
@@ -57,7 +58,8 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.15";
+    IDDiagnostics[@"collapseDiagnostic"] = IDCollapseSnapshot();
+    IDDiagnostics[@"version"] = @"0.3.16";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -167,7 +169,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.15.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.16.startup-pending";
 #endif
 }
 
@@ -396,6 +398,7 @@ static NSArray *IDItems(id object) {
 - (void)toggleCollapsed;
 - (void)cancelCollapse;
 - (void)finishCollapse;
+- (void)recordCollapseDiagnostic:(NSString *)stage reason:(NSString *)reason consumed:(BOOL)consumed;
 @property(nonatomic) BOOL geometryUpdating;
 @property(nonatomic) BOOL presentationPending;
 @property(nonatomic) NSUInteger presentationGeneration;
@@ -927,11 +930,39 @@ static BOOL IDSupplementaryReady(id owner) {
         [state updateNativeListVisibility];
     }); // One shot only; never requeue itself from layout.
 }
+- (void)recordCollapseDiagnostic:(NSString *)stage reason:(NSString *)reason consumed:(BOOL)consumed {
+    IDCollapseIncrement(stage);
+    if (consumed) IDCollapseIncrement(@"consumed");
+    IDDigestView *digest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
+    UIButton *capsule = digest.capsuleButton;
+    NSDictionary *sample = @{@"event":@(IDCollapseNextEvent()), @"stage":stage, @"reason":reason, @"consumed":@(consumed),
+        @"cycle":IDCollapseTrace[@"cycle"], @"source":IDCollapseTrace[@"source"] ?: @0,
+        @"owner":IDCollapseAnonymous(self.owner), @"live":@(IDPresentationCycle.live),
+        @"compact":@(IDPresentationCycle.compact), @"state":@(self.collapseState),
+        @"active":@(self.active), @"disabled":@(self.disabled), @"overlay":@(self.overlay),
+        @"inserted":@(self.inserted), @"loaded":@(self.panel.isViewLoaded),
+        @"capsuleExists":@(capsule != nil), @"hidden":@(capsule ? capsule.hidden : YES),
+        @"alpha":@(capsule ? capsule.alpha : -1), @"window":@(capsule.window != nil),
+        @"height":@(capsule ? capsule.bounds.size.height : -1),
+        @"panelHidden":@(digest ? digest.hidden : YES), @"panelAlpha":@(digest ? digest.alpha : -1),
+        @"panelWindow":@(digest.window != nil), @"panelHeight":@(digest ? digest.bounds.size.height : -1),
+        @"constraintHeight":@(self.overlayHeight ? self.overlayHeight.constant : -1)};
+    IDCollapseTrace[[stage stringByAppendingString:@"Sample"]] = sample;
+    if (consumed) IDCollapseTrace[@"lastConsumed"] = sample;
+    IDCollapseFlushSoon();
+}
 - (void)render {
-    if (![self workAllowed] || !self.panel.isViewLoaded) return;
+    if (![self workAllowed] || !self.panel.isViewLoaded) {
+        [self recordCollapseDiagnostic:@"render" reason:!self.panel.isViewLoaded ? @"view-not-loaded" : @"work-not-allowed" consumed:NO];
+        return;
+    }
     double started = IDMonotonic();
     self.geometryCacheValid = NO;
-    if (IDPanelTransitioning(self.collapseState)) { self.renderAfterCollapse = YES; return; }
+    if (IDPanelTransitioning(self.collapseState)) {
+        self.renderAfterCollapse = YES;
+        [self recordCollapseDiagnostic:@"render" reason:@"transition-in-progress" consumed:NO];
+        return;
+    }
     if (!IDContainedMode || !self.overlay) self.collapseState = IDPanelExpanded;
     else if (IDCollapseOnPresentation && IDPresentationCycle.live)
         self.collapseState = IDStablePresentationState(IDPresentationCycle, YES);
@@ -949,6 +980,8 @@ static BOOL IDSupplementaryReady(id owner) {
     digest.retainedLayoutReady = [digest expandedCardsLayoutReady];
     [self updateNativeListVisibility];
     [self updateClearButton];
+    [self recordCollapseDiagnostic:@"render" reason:!IDContainedMode ? @"supplementary-mode" : !self.overlay ? @"no-overlay" : !IDCollapseOnPresentation ? @"switch-off" : !IDPresentationCycle.live ? @"no-live-cycle" : @"cycle-applied"
+        consumed:IDContainedMode && self.overlay && IDCollapseOnPresentation && IDPresentationCycle.live];
     IDRecordPerformance(@"render", started);
 }
 
@@ -999,8 +1032,13 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)beginAppearance {
-    if (self.active) return;
+    if (self.active) {
+        [self recordCollapseDiagnostic:@"beginAppearance" reason:@"already-active" consumed:NO];
+        return;
+    }
     self.collapseState = IDStablePresentationState(IDPresentationCycle, IDCollapseOnPresentation && IDContainedMode);
+    [self recordCollapseDiagnostic:@"beginAppearance" reason:!IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : !IDPresentationCycle.live ? @"no-live-cycle" : @"cycle-applied-before-mount"
+        consumed:IDCollapseOnPresentation && IDContainedMode && IDPresentationCycle.live];
     self.snapshotRetries = 0; self.cardPage = 0;
     self.dismissed = NO;
     self.active = YES;
@@ -1016,6 +1054,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)endAppearance {
+    [self recordCollapseDiagnostic:@"beforeExit" reason:@"owner-disappear-before-teardown" consumed:NO];
     double started = IDMonotonic();
     // Mark inactive BEFORE cancellation: no geometry fitting, rendering or eligibility scans.
     self.active = NO; self.dismissed = YES;
@@ -1035,6 +1074,8 @@ static BOOL IDSupplementaryReady(id owner) {
     }
     [self resetFilter]; // Restore actual native filter state, even on teardown.
     IDRecordPerformance(@"disappear", started);
+    // Preserve the pre-teardown scalar sample, but never delay privacy scrubbing with file I/O.
+    IDStatus(@"collapse-owner-exit", @"preserved-before-teardown");
 }
 
 - (void)togglePinnedIdentifier:(NSString *)identifier {
@@ -1542,7 +1583,10 @@ static void IDApplyPullCollapse(void) {
     NSUInteger applied = 0;
     for (id owner in IDOwners.allObjects) {
         IDCoordinator *state = IDState(owner);
-        if (!state.active || !state.overlay || !state.inserted || !state.panel.isViewLoaded) continue;
+        if (!state.active || !state.overlay || !state.inserted || !state.panel.isViewLoaded) {
+            [state recordCollapseDiagnostic:@"directApply" reason:!state.active ? @"owner-inactive" : !state.overlay ? @"no-overlay" : !state.inserted ? @"not-inserted" : @"view-not-loaded" consumed:NO];
+            continue;
+        }
         // Do not wait for render/snapshot readiness. An already mounted panel must fold now.
         [state cancelClear];
         [state cancelCollapse];
@@ -1554,11 +1598,18 @@ static void IDApplyPullCollapse(void) {
         [state.panel.view setNeedsLayout];
         [state.panel.view layoutIfNeeded];
         [state updateNativeListVisibility];
+        [state recordCollapseDiagnostic:@"directApply" reason:@"state-applied"
+            consumed:IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation && IDPresentationCycle.live];
         applied++;
     }
+    IDCollapseDiagnosticInit();
+    IDCollapseTrace[@"directOwners"] = @(IDOwners.allObjects.count);
+    IDCollapseTrace[@"directApplied"] = @(applied);
+    if (!IDOwners.allObjects.count) IDCollapseTrace[@"directApplySample"] = @{@"reason":@"no-owners"};
     IDDiagnostics[@"collapseAppliedOwners"] = @(applied);
 }
 static void IDPullEnded(NSString *reason) {
+    IDCollapseWillClear(reason);
     IDStableEndPresentation(&IDPresentationCycle);
     IDDiagnostics[@"collapseLastEnd"] = reason;
     IDStatus(@"pull-ended", reason);
@@ -1566,6 +1617,7 @@ static void IDPullEnded(NSString *reason) {
 %group IDPullInput
 %hook SBCoverSheetSlidingViewController
 - (void)_handlePresentGesture:(id)gesture {
+    uint64_t idEvent = IDCollapseEnter(0, gesture);
     if (NSThread.isMainThread && [gesture isKindOfClass:UIGestureRecognizer.class]) {
         UIGestureRecognizerState phase = [(UIGestureRecognizer *)gesture state];
         BOOL duplicate = [objc_getAssociatedObject(gesture, &IDPullBeganKey) boolValue];
@@ -1577,22 +1629,48 @@ static void IDPullEnded(NSString *reason) {
             if (IDStableUserPull(&IDPresentationCycle, YES, duplicate, enabled)) {
                 IDDiagnostics[@"collapseCycle"] = @([IDDiagnostics[@"collapseCycle"] unsignedIntegerValue] + 1);
                 IDDiagnostics[@"collapseLastReason"] = @"accepted-user-pan-began";
+                IDCollapseDecision(YES, @"accepted-user-pan-began", idEvent, self);
                 IDApplyPullCollapse();
-            } else IDDiagnostics[@"collapseLastReason"] = duplicate ? @"duplicate-began" : !IDEnabled ? @"plugin-disabled" : !IDGrouping ? @"grouping-disabled" : !IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : @"screen-off-hook-unavailable";
+            } else {
+                IDDiagnostics[@"collapseLastReason"] = duplicate ? @"duplicate-began" : !IDEnabled ? @"plugin-disabled" : !IDGrouping ? @"grouping-disabled" : !IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : @"screen-off-hook-unavailable";
+                IDCollapseDecision(NO, IDDiagnostics[@"collapseLastReason"], idEvent, self);
+            }
             IDStatus(@"pull-input", IDDiagnostics[@"collapseLastReason"]);
         } else if (phase == UIGestureRecognizerStateCancelled || phase == UIGestureRecognizerStateFailed) {
             IDPullEnded(@"gesture-cancelled-or-failed");
         }
     } else if (NSThread.isMainThread) {
         IDDiagnostics[@"collapseLastReason"] = @"payload-not-UIGestureRecognizer";
+        IDCollapseDecision(NO, @"payload-not-UIGestureRecognizer", idEvent, self);
         IDStatus(@"pull-rejected", IDDiagnostics[@"collapseLastReason"]);
     } else {
         dispatch_async(dispatch_get_main_queue(), ^{
             IDDiagnostics[@"collapseLastReason"] = @"input-off-main-rejected";
+            IDCollapseDecision(NO, @"input-off-main-rejected", idEvent, nil);
             IDStatus(@"pull-rejected", IDDiagnostics[@"collapseLastReason"]);
         });
     }
     %orig;
+    IDCollapseExit(0, gesture, idEvent);
+}
+%end
+%end
+// Observation only; neither helper may start or modify a presentation cycle.
+%group IDPullHelperProbe
+%hook SBCoverSheetSlidingViewController
+- (void)_presentGestureBeganWithGestureRecognizer:(id)gesture {
+    uint64_t idEvent = IDCollapseEnter(1, gesture);
+    %orig;
+    IDCollapseExit(1, gesture, idEvent);
+}
+%end
+%end
+%group IDPullIndirectProbe
+%hook SBCoverSheetSlidingViewController
+- (void)_handleIndirectPresentGesture:(id)gesture {
+    uint64_t idEvent = IDCollapseEnter(2, gesture);
+    %orig;
+    IDCollapseExit(2, gesture, idEvent);
 }
 %end
 %end
@@ -1627,6 +1705,17 @@ static void IDInstallPullHooks(void) {
     if (!IDDiagnostics[@"collapseLastReason"]) IDDiagnostics[@"collapseLastReason"] = @"waiting-for-user-pan-began";
     Class sliding = objc_getClass("SBCoverSheetSlidingViewController");
     Class manager = objc_getClass("SBCoverSheetPresentationManager");
+    static BOOL helperInstalled, indirectInstalled;
+    if (!helperInstalled) {
+        NSString *support = IDPullMethodSupport(sliding, "_presentGestureBeganWithGestureRecognizer:", "@");
+        IDDiagnostics[@"collapseHelperHook"] = support;
+        if ([support isEqualToString:@"supported"]) { %init(IDPullHelperProbe); helperInstalled = YES; }
+    }
+    if (!indirectInstalled) {
+        NSString *support = IDPullMethodSupport(sliding, "_handleIndirectPresentGesture:", "@");
+        IDDiagnostics[@"collapseIndirectHook"] = support;
+        if ([support isEqualToString:@"supported"]) { %init(IDPullIndirectProbe); indirectInstalled = YES; }
+    }
     if (!IDPullHookInstalled) {
         NSString *support = IDPullMethodSupport(sliding, "_handlePresentGesture:", "@");
         IDDiagnostics[@"collapseInputHook"] = support;
@@ -1733,8 +1822,10 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
                                 const void *object, CFDictionaryRef userInfo) {
     dispatch_async(dispatch_get_main_queue(), ^{
         IDLoadOptions();
-        if (!IDCollapseOnPresentation || !IDContainedMode || !IDEnabled || !IDGrouping)
+        if (!IDCollapseOnPresentation || !IDContainedMode || !IDEnabled || !IDGrouping) {
+            IDCollapseWillClear(@"preferences-disabled");
             IDStableEndPresentation(&IDPresentationCycle);
+        }
         if (!IDCollapseOnPresentation || !IDContainedMode) IDApplyPullCollapse();
         IDStatus(@"preferences-loaded", @"Collapse applies on the next distinct user pull");
         BOOL retry = CFEqual(name, CFSTR("com.local.islanddigest/retry"));
