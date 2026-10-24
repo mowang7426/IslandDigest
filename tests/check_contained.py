@@ -42,7 +42,7 @@ for forbidden in ('writeToFile', 'IDWritePreference', 'NSUserDefaults', 'NSLog',
 print('PASS contained privacy/hide/source guardrails (not native runtime verification)')
 
 prefs = (root/"prefs/IDPrefs.m").read_text()
-for key in ("ContainedMode", "HideNativeList", "AlwaysHideNativeList", "containedEnabled", "hideNativeRequested", "nativeHideSupported", "nativeHidden", "nativeHideReason", "previewPolicyReason", "cardsRendered", "cardsRedacted"):
+for key in ("ContainedMode", "HideNativeList", "AlwaysHideNativeList"):
     assert f'@"{key}"' in prefs
 assert "snapshotComplete" in coordinator
 assert "IDNativeHideOwnerKey" in coordinator
@@ -104,7 +104,7 @@ assert 'additionalSafeAreaInsets =' not in main
 for key in ('PanelTopOffset', 'PanelSideInset', 'PanelMaxHeight'):
     assert f'@"{key}"' in main and f'@"{key}"' in prefs
 assert 'resetPanelLayout' in prefs and 'layoutChangePending' in prefs
-assert '不是已验证的时钟避让' in prefs
+assert '不保证避开锁屏时钟' in prefs
 print('PASS 0.1.9 render-after-mount, no automatic content inset, actual card/label readiness, bounded layout controls')
 reset = prefs.split('- (void)resetPanelLayout {',1)[1].split('\n}',1)[0]
 assert 'self.layoutChangeGeneration++;' in reset and 'self.layoutChangePending = NO;' in reset
@@ -137,14 +137,8 @@ assert 'dispatch_sync' not in main + digest + coordinator
 assert 'IDCardsRepresentationUsable(expected, self.builtCardCount, valid, visible)' in ui  # ANY visible card, not all cards.
 print('PASS 0.3.6 post-layout recovery, native subclass/window/lease/reassert/owner and no-preparation contracts')
 
-# 0.3.6 Settings must expose only the saved verdict's safe scalar fields.
-prefs = (root / 'prefs/IDPrefs.m').read_text()
-for key in ('nativeVisibilityHooks', 'nativeCandidateClass', 'nativeCandidateSameWindow',
-            'nativeCurrentOwner', 'nativeDecisionStage', 'nativeLastActiveDecision'):
-    assert key in prefs, key
-assert '[lastActive isKindOfClass:NSDictionary.class]' in prefs
-assert '[value isKindOfClass:NSString.class]' in prefs
-assert '[value isKindOfClass:NSNumber.class]' in prefs
+# 0.3.19 removes Settings status readers; production diagnostics remain internal.
+assert 'IDStatusPath' not in prefs
 assert 'IDCardReadiness.h' in main
 assert 'cardsReadinessReason' in coordinator
 assert 'IDCardCoverageUsable' in ui

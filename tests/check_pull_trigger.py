@@ -20,10 +20,10 @@ assert t.index('%init(IDMain);') < t.rindex('IDInstallPullHooks();')
 for reason in ('class-missing', 'selector-missing', 'return-or-arity-mismatch', 'argument-ABI-mismatch'):
     assert reason in t
 for key in ('collapseInputHook','collapseEndHook','collapseScreenHook','effectiveCollapse','currentPrefCollapse','effectiveContained','collapseCycle','collapseCycleLive','collapseCycleCompact','collapseLastReason','collapseLastEnd'):
-    assert f'@"{key}"' in t and f'@"{key}"' in p, key
+    assert f'@"{key}"' in t, key
 assert 'return CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)' in s
 assert 'if (!IDWritePreference(key, value))' in p
-assert p.index('if (!IDWritePreference(key, value))') < p.index('- (NSString *)diagnostics')
+assert '设置未能保存' in p and 'IDStatusPath' not in p
 assert 'IDCollapseOnPresentation = IDPref(@"CollapseOnPresentation", NO)' in t
 assert '[collapse setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"]' in p
 begin = t.split('- (void)beginAppearance {')[1].split('- (void)endAppearance {')[0]

@@ -29,8 +29,7 @@ assert 'capsule.bounds.size.height' in t and 'capsule.window != nil' in t and 'c
 assert 'beforeExit' in t and 'lastConsumed' in t
 exit_body = t.split('- (void)endAppearance {')[1].split('- (void)togglePinnedIdentifier:')[0]
 assert exit_body.index('recordCollapseDiagnostic:') < exit_body.index('[self dropContainedContent]') < exit_body.index('IDStatus(')
-assert 'v[@"cycle"] ?: @0' in p
-assert p.index('折叠诊断摘要') < p.index('启用灵屿通知')
-assert 'collapseSummary' in p and '@"collapseHelperHook"' in p and '@"collapseIndirectHook"' in p
+# 0.3.19 removes Settings diagnostics, not the internal probes.
+assert 'collapseSummary' not in p and 'IDStatusPath' not in p
 assert '%hook UIGestureRecognizer' not in t and '%hook UIView\n' not in t
 print('PASS 0.3.16 raw entry/pre-post probes, immutable decision history, pre-clear facts, consumption/view facts, privacy and summary wiring')

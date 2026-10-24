@@ -1,4 +1,4 @@
-"""0.3.18 production wiring. Runtime assertions execute separately on macOS."""
+"""0.3.19 production wiring. Runtime assertions execute separately on macOS."""
 from pathlib import Path
 r = Path(__file__).resolve().parents[1]
 t = (r/'Tweak.xm').read_text()
@@ -26,10 +26,10 @@ assert 'IDFinishPresentationAudit();' in t
 assert 'IDAuditPresentationRuntime(self.owner);' in t
 assert '%hook UIGestureRecognizer' not in t and '%hook UIView\n' not in t
 assert '%p' not in a and 'NSLog' not in a
-assert 'ID_VERSION @"0.3.18"' in (r/'IDShared.h').read_text()
+assert 'ID_VERSION @"0.3.19"' in (r/'IDShared.h').read_text()
 p = (r/'prefs/IDPrefs.m').read_text()
 for key in ('runtimeManager', 'runtimeSlider', 'ownerAncestors', 'hookAudit', 'transitionSample', 'installedExpected', 'targetExpectedNow', 'runtimeExpectedNow'):
-    assert '@"'+key+'"' in p
-assert 'n < 7' in p and 'IDAuditFlag' in p
+    assert '@"'+key+'"' in a or '@"'+key+'"' in t or '@"'+key+'"' in (r/'IDCollapseDiagnostics.inc').read_text()
+assert 'runtimeSummary' not in p and 'IDAuditFlag' not in p
 assert '[rows addObject:@{}]' in a
 print('PASS explicit-user presentation, primary identity, cross-entry dedup, exact hook/runtime audit contracts')

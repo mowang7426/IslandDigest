@@ -16,12 +16,6 @@
 @property(nonatomic) BOOL layoutChangePending;
 @end
 
-static NSString *IDAuditFlag(id value) {
-    return [value isKindOfClass:NSNumber.class] ? ([value boolValue] ? @"是" : @"否") : @"未知";
-}
-static NSString *IDAuditText(id value) {
-    return [value isKindOfClass:NSString.class] ? value : @"未知";
-}
 static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:nil set:NULL get:NULL detail:Nil cell:PSGroupCell edit:Nil];
     [item setProperty:footer forKey:@"footerText"];
@@ -32,7 +26,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     self.title = @"管理置顶应用";
-    NSMutableArray *items = [NSMutableArray arrayWithObject:IDGroupSpecifier(@"本机通知中出现的应用", @"长按通知分组中的应用胶囊也可置顶或取消。仅保存已置顶和当前有通知的应用名称，不读取通知内容；列表不枚举已安装应用。无通知的置顶应用保留在这里，有新通知时自动靠前。最多置顶 128 个应用。")];
+    NSMutableArray *items = [NSMutableArray arrayWithObject:IDGroupSpecifier(@"应用置顶", @"长按应用胶囊也可置顶或取消，最多 128 个。仅保存应用名称与标识，不读取通知内容、不枚举已安装应用。")];
     NSArray *pins = IDPinnedIdentifiers();
     id savedNames = IDPreferenceValue(@"AppNames");
     NSDictionary *names = [savedNames isKindOfClass:NSDictionary.class] ? savedNames : @{};
@@ -148,7 +142,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
         return; // Do not rebuild Settings cells while the slider is being dragged.
     }
     if (!IDWritePreference(key, value)) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"设置保存失败" message:@"偏好同步未成功，不能确认开关已持久化。请重新打开设置核对，并查看诊断中的 currentPrefCollapse 与 effectiveCollapse。" preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"设置保存失败" message:@"设置未能保存，请重新打开本页核对后重试。" preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
         _specifiers = nil; [self reloadSpecifiers];
@@ -157,159 +151,56 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     IDNotifyPreferencesChanged();
     _specifiers = nil; [self reloadSpecifiers];
 }
-- (NSString *)collapseSummary {
-    NSDictionary *s = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
-    NSDictionary *d = s[@"collapseDiagnostic"];
-    if (![d isKindOfClass:NSDictionary.class]) return @"暂无 0.3.18 诊断：尚未加载新版本或状态文件不可读。";
-    NSDictionary *r = d[@"raw"], *h = d[@"helper"], *i = d[@"indirect"];
-    NSArray *states = r[@"states"];
-    NSDictionary *v = d[@"lastConsumed"] ?: d[@"renderSample"] ?: d[@"beginAppearanceSample"] ?: d[@"directApplySample"];
-    NSString *fresh = [s[@"updated"] isKindOfClass:NSDate.class] && -[s[@"updated"] timeIntervalSinceNow] < 300 ? @"新鲜" : @"超过5分钟";
-    return [NSString stringWithFormat:
-        @"版本 %@ / iOS %@ / PID %@（%@）\n钩子 主%@ 辅%@ 间%@\n开关 有效%@ 保存%@ 内置%@\n主入口 %@ 次，前%@→后%@，主线程%@\n状态 P/B/C/E/X/F：%@\nhelper %@ / indirect %@ / 事件#%@\n接受%@ 拒绝%@ / 周期%@ / 消费%@\n直用%@ 出现%@ 渲染%@ / 应用拥有者%@\n最后接受：%@ (#%@)\n最后拒绝：%@ (#%@)\n消费/检查：C%@ %@ / %@ / owner%@\n胶囊 hidden%@ α%@ window%@ 高%@\n面板高%@ / 约束高%@\n清理：%@（此前 live%@ compact%@）",
-        s[@"version"], s[@"system"], s[@"pid"], fresh,
-        [s[@"collapseInputHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseInputHook"] ?: @"?",
-        [s[@"collapseHelperHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseHelperHook"] ?: @"?",
-        [s[@"collapseIndirectHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseIndirectHook"] ?: @"?",
-        s[@"effectiveCollapse"], s[@"currentPrefCollapse"], s[@"effectiveContained"],
-        r[@"total"], r[@"pre"], r[@"post"], r[@"main"],
-        states.count == 7 ? [[states subarrayWithRange:NSMakeRange(0, 6)] componentsJoinedByString:@"/"] : @"—",
-        h[@"total"], i[@"total"], d[@"event"], d[@"accepted"], d[@"rejected"], d[@"cycle"], d[@"consumed"],
-        d[@"directApply"], d[@"beginAppearance"], d[@"render"], d[@"directApplied"] ?: @0,
-        d[@"lastAccept"], d[@"acceptEvent"] ?: @0, d[@"lastReject"], d[@"rejectEvent"] ?: @0,
-        v[@"cycle"] ?: @0, v[@"stage"] ?: @"未消费", v[@"reason"] ?: d[@"directApplySample"][@"reason"] ?: @"—", v[@"owner"] ?: @0,
-        v[@"hidden"] ?: @"—", v[@"alpha"] ?: @"—", v[@"window"] ?: @"—", v[@"height"] ?: @"—",
-        v[@"panelHeight"] ?: @"—", v[@"constraintHeight"] ?: @"—",
-        d[@"clearReason"], d[@"clearLive"] ?: @0, d[@"clearCompact"] ?: @0];
-}
-- (NSString *)runtimeSummary {
-    NSDictionary *s = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
-    NSDictionary *d = s[@"collapseDiagnostic"];
-    if (![d isKindOfClass:NSDictionary.class]) return @"运行时未知：尚无诊断。";
-    NSMutableArray *lines = [NSMutableArray arrayWithObjects:
-        [NSString stringWithFormat:@"runtimeManager：%@", IDAuditText(d[@"runtimeManager"])],
-        [NSString stringWithFormat:@"runtimeSlider：%@", IDAuditText(d[@"runtimeSlider"])], nil];
-    NSArray *ancestors = d[@"ownerAncestors"];
-    if ([ancestors isKindOfClass:NSArray.class]) {
-        for (id name in ancestors) if ([name isKindOfClass:NSString.class])
-            [lines addObject:[@"ownerAncestors：" stringByAppendingString:name]];
-    } else [lines addObject:@"ownerAncestors：未知"];
-    [lines addObject:@"hookAudit：支持仅指ABI；装=安装时IMP，现=目标当前IMP，实=实例当前IMP。未知不等于否。"];
-    NSArray *names = @[@"主手势", @"辅手势", @"间接手势", @"结束", @"熄屏", @"manager展示", @"slider展示"];
-    NSArray *keys = @[@"collapseInputHook", @"collapseHelperHook", @"collapseIndirectHook", @"collapseEndHook", @"collapseScreenHook", @"collapseExplicitManagerHook", @"collapseExplicitSliderHook"];
-    NSArray *rows = d[@"hookAudit"];
-    for (NSUInteger n = 0; n < 7; n++) {
-        NSDictionary *row = [rows isKindOfClass:NSArray.class] && n < rows.count ? rows[n] : @{};
-        [lines addObject:[NSString stringWithFormat:@"%@ 支持:%@ 装%@ 现%@ 实%@", names[n], IDAuditText(s[keys[n]]), IDAuditFlag(row[@"installedExpected"]), IDAuditFlag(row[@"targetExpectedNow"]), IDAuditFlag(row[@"runtimeExpectedNow"])]];
-        [lines addObject:[NSString stringWithFormat:@"  定义 %@ → %@ / 类 %@", IDAuditText(row[@"beforeDefinition"]), IDAuditText(row[@"runtimeDefinition"]), IDAuditText(row[@"runtimeClass"])]];
-    }
-    NSDictionary *boundary = d[@"primaryBoundary"];
-    [lines addObject:[NSString stringWithFormat:@"主周期 ABI:%@ 从已显示%@ 主实例%@ 锁已知%@ 锁定%@ 占用%@\n%@ / 结束已显示%@", IDAuditText(s[@"primaryLifecycleHook"]), IDAuditFlag(boundary[@"fromAppeared"]), IDAuditFlag(boundary[@"primary"]), IDAuditFlag(boundary[@"lockKnown"]), IDAuditFlag(boundary[@"uiLocked"]), IDAuditFlag(boundary[@"occupied"]), IDAuditText(boundary[@"reason"]), IDAuditFlag(d[@"primaryEndAppeared"])]];
-    NSDictionary *t = d[@"transitionSample"];
-    [lines addObject:[NSString stringWithFormat:@"transitionSample：%@\n展示%@ 用户%@ 主slider%@ 锁已知%@ 锁定%@\n结果：%@", IDAuditText(t[@"entry"]), IDAuditFlag(t[@"presenting"]), IDAuditFlag(t[@"userGesture"]), IDAuditFlag(t[@"primary"]), IDAuditFlag(t[@"lockKnown"]), IDAuditFlag(t[@"uiLocked"]), IDAuditText(t[@"reason"])]];
-    return [lines componentsJoinedByString:@"\n"];
-}
-- (NSString *)diagnostics {
-    NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
-    if (!status) return @"未收到 SpringBoard 诊断。可能尚未加载、未启用插件注入、处于安全模式，或诊断文件不可读；这不是已确认的失败原因。请确认当前越狱的插件注入开启，并确认安装的是原生 RootHide 包。";
-    NSMutableArray *lines = [NSMutableArray new];
-    NSDate *updated = status[@"updated"];
-    if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
-    if ([status[ @"alwaysHideActive"] boolValue]) [lines addObject:@"高风险始终隐藏已激活：若面板空白，关闭始终隐藏与隐藏原生列表后重新打开通知中心恢复。"];
-    // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"effectiveEnabled", @"effectiveGrouping", @"currentPrefEnabled", @"currentPrefGrouping", @"lastActiveReadCompletion", @"lastActiveReadCancelReason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"presentationGestureSupported", @"collapseInputHook", @"collapseHelperHook", @"collapseIndirectHook", @"collapseEndHook", @"collapseScreenHook", @"collapseSignal", @"collapseGestureCount", @"effectiveCollapse", @"currentPrefCollapse", @"effectiveContained", @"collapseCycle", @"collapseCycleLive", @"collapseCycleCompact", @"collapseLastReason", @"collapseAppliedOwners", @"collapseLastEnd", @"masterEventHooks", @"enumerationVisits", @"enumerationSlices", @"enumerationCaptured", @"selectedRequests", @"cardPage", @"cardPages", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
-        if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
-    // The saved active verdict survives an inactive teardown sample. Whitelist
-    // nested scalars too: never display arbitrary diagnostic dictionary content.
-    id lastActive = status[@"nativeLastActiveDecision"];
-    if ([lastActive isKindOfClass:NSDictionary.class]) {
-        [lines addObject:@"nativeLastActiveDecision:"];
-        for (NSString *key in @[@"stage", @"candidateClass", @"sameWindow", @"currentOwner", @"nativeHidden", @"cardsRendered", @"cardsLayoutReady", @"viewportWidth", @"viewportHeight", @"contentHeight", @"stackHeight", @"reason"]) {
-            id value = lastActive[key];
-            if ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])
-                [lines addObject:[NSString stringWithFormat:@"  %@: %@", key, value]];
-        }
-    }
-    NSDictionary *collapse = status[@"collapseDiagnostic"];
-    if ([collapse isKindOfClass:NSDictionary.class]) {
-        for (NSString *key in @[@"event", @"cycle", @"source", @"accepted", @"rejected", @"acceptEvent", @"rejectEvent", @"lastAccept", @"lastReject", @"clearReason", @"clearEvent", @"clearCycle", @"clearLive", @"clearCompact", @"clearSource", @"directOwners", @"directApplied", @"directApply", @"beginAppearance", @"render", @"consumed"])
-            if (collapse[key]) [lines addObject:[NSString stringWithFormat:@"collapse.%@: %@", key, collapse[key]]];
-        for (NSString *section in @[@"raw", @"helper", @"indirect", @"directApplySample", @"beginAppearanceSample", @"renderSample", @"lastConsumed", @"beforeExitSample"]) {
-            NSDictionary *sample = collapse[section];
-            if (![sample isKindOfClass:NSDictionary.class]) continue;
-            for (NSString *key in @[@"total", @"pre", @"post", @"event", @"postEvent", @"main", @"offMain", @"recognizer", @"class", @"stage", @"reason", @"consumed", @"cycle", @"source", @"owner", @"live", @"compact", @"state", @"active", @"disabled", @"overlay", @"inserted", @"loaded", @"capsuleExists", @"hidden", @"alpha", @"window", @"height", @"panelHidden", @"panelAlpha", @"panelWindow", @"panelHeight", @"constraintHeight"]) {
-                id value = sample[key];
-                if ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])
-                    [lines addObject:[NSString stringWithFormat:@"collapse.%@.%@: %@", section, key, value]];
-            }
-            for (NSString *key in @[@"states", @"postStates"]) {
-                NSArray *values = sample[key];
-                if (![values isKindOfClass:NSArray.class] || values.count != 7) continue;
-                BOOL safe = YES; for (id value in values) if (![value isKindOfClass:NSNumber.class]) safe = NO;
-                if (safe) [lines addObject:[NSString stringWithFormat:@"collapse.%@.%@ (P/B/C/E/X/F/unknown): %@", section, key, [values componentsJoinedByString:@"/"]]];
-            }
-        }
-    }
-    return [lines componentsJoinedByString:@"\n"];
-}
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"折叠诊断摘要 · 0.3.18" footer:[self collapseSummary]]];
-    PSSpecifier *collapseRefresh = [PSSpecifier preferenceSpecifierNamed:@"刷新折叠诊断（下拉一次后截图此处）" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
-    collapseRefresh.buttonAction = @selector(refreshStatus); [items addObject:collapseRefresh];
-    [items addObject:[self group:@"运行时钩子审计（非真机修复证明）" footer:[self runtimeSummary]]];
-    [items addObject:[self group:@"灵屿通知 0.3.18 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.19 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
-    [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
-    [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
-    [items addObject:[self toggle:@"解锁时显示通知预览（默认关闭）" key:@"AllowPreviewWhenUnlocked"]];
-    [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"仅当设备已解锁、受保护数据可用、拥有者界面可见且本开关开启时读取原生 title/subtitle/message。iOS 17 私有 contentPreviewSetting 的整型值缺少可核验枚举映射，因此不猜值；默认关闭，只有你明确开启后才允许解锁预览。该开关可能无法保持每个 App 的“永不显示预览”语义，请仅在理解风险时开启；锁屏仍始终隐藏。锁定时不读取正文，锁定通知到达即同步清空已显示卡片。最多 160 条。原生列表默认保留。隐藏开关仅在插件内模式开启时可用，接口不匹配或布局不可用时保留原生。始终隐藏是高风险选项：打开通知中心前，只要当前宿主已提供精确原生列表就立即隐藏，不等待卡片、完整枚举或布局；插件故障时可能出现空白，按诊断页恢复。"]];
-    [items addObject:[self toggle:@"插件内显示通知卡片" key:@"ContainedMode"]];
-    [items addObject:[self group:@"下拉展示策略" footer:@"默认关闭，仅插件内通知卡片覆盖层有效。开启后，经系统明确的用户下拉展示事件确认才先显示胶囊，点击胶囊展开；同次展示新增通知不会重新折叠或自动展开。锁屏唤醒和控制器重建不当作新下拉。系统输入接口缺失、ABI 不符或未收到实际下拉手势时不自动折叠；不支持的 supplementary 面板保持展开。设置在下一次用户下拉生效，已挂载面板也会立即折叠；诊断记录输入钩子、有效开关、手势次数和最近拒绝原因。presentationGestureSupported 仅表示输入钩子已安装，不代表真机验收。"]];
+    [items addObject:[self toggle:@"插件通知卡片" key:@"ContainedMode"]];
+    [items addObject:[self group:@"预览与隐私" footer:@"预览默认关闭。仅在解锁、受保护数据可用且界面可见时读取内容；锁定即清空。可能无法遵循每个 App 的“永不显示预览”，请谨慎开启。内容不联网、不写入日志或偏好。"]];
+    [items addObject:[self toggle:@"解锁时显示预览" key:@"AllowPreviewWhenUnlocked"]];
+    [items addObject:[self group:@"展开与原生列表" footer:@"先折叠默认关闭，仅用于插件卡片；点击胶囊展开。同次展示的新通知不改变展开状态；不支持的 supplementary 面板保持展开。"]];
     PSSpecifier *collapse = [self toggle:@"每次下拉先折叠" key:@"CollapseOnPresentation"];
     [collapse setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
     [items addObject:collapse];
-    PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
+    [items addObject:[self group:@"原生列表可见性" footer:@"隐藏默认关闭。始终隐藏为高风险选项：不等待卡片就隐藏，插件故障可能导致空白。恢复时请关闭“隐藏原生列表”，或关闭插件。"]];
+    PSSpecifier *hide = [self toggle:@"隐藏原生列表" key:@"HideNativeList"];
     [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
     [items addObject:hide];
-    PSSpecifier *alwaysHide = [self toggle:@"始终隐藏原生通知列表（高风险）" key:@"AlwaysHideNativeList"];
+    PSSpecifier *alwaysHide = [self toggle:@"始终隐藏（高风险）" key:@"AlwaysHideNativeList"];
     [alwaysHide setProperty:@(IDPref(@"ContainedMode", YES) && IDPref(@"HideNativeList", NO)) forKey:@"enabled"];
     [items addObject:alwaysHide];
-    [items addObject:[self group:@"通透背景" footer:@"默认通透：外层背景 0 且磨砂关闭，不修改壁纸或系统视图。0 = 完全透明，100 = 完全不透明；磨砂可独立开启。卡片保留轻量语义底色以改善文字对比，文字和分类仍会覆盖壁纸。此设置不会开启通知预览或更改隐私门控。"]];
-    [items addObject:[self slider:@"面板背景不透明度（0 透明 / 100 不透明）" key:@"PanelBackgroundOpacity" low:0 high:100 fallback:0 step:1]];
-    [items addObject:[self toggle:@"磨砂背景（默认关闭）" key:@"PanelBlur"]];
-    [items addObject:[self group:@"通知文字颜色" footer:@"仅影响插件卡片的标题、副标题和正文；不修改系统文字、分类胶囊或隐私策略。渐变默认关闭，静态无动画。可选择纯白/纯黑搭配轻阴影；渐变不保证所有壁纸的对比度，复杂壁纸建议同时提高背景不透明度。保留 UIKit 多行、大字和 emoji 绘制；没有缓存通知文字图片。"]];
-    [items addObject:[self toggle:@"静态渐变文字（默认关闭）" key:@"GradientText"]];
+    [items addObject:[self group:@"应用分组与排序" footer:@"置顶应用优先，其余按所选方式排序。记住筛选默认关闭；上次应用无通知时恢复全部。"]];
+    [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
+    [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
+    [items addObject:[self choice:@"应用排序" key:@"SortMode" values:@[@"recent", @"count", @"name"] titles:@[@"最近通知优先（默认）", @"通知数量从多到少", @"应用名称（本地语言）"]]];
+    [items addObject:[self toggle:@"记住上次筛选的应用" key:@"RememberFilter"]];
+    [items addObject:[PSSpecifier preferenceSpecifierNamed:@"管理置顶应用" target:self set:NULL get:NULL detail:IDPinnedAppsController.class cell:PSLinkCell edit:Nil]];
+    [items addObject:[self group:@"分类布局" footer:@"网格最多显示三行，超出后内部滚动；小屏或较大字体自动减少列数。长按应用胶囊可管理置顶。"]];
+    [items addObject:[self choice:@"分类视觉密度" key:@"CategoryStyle" values:@[@"mini", @"standard"] titles:@[@"迷你（默认）", @"标准"]]];
+    [items addObject:[self choice:@"显示布局" key:@"LayoutMode" values:@[@"compact", @"grid"] titles:@[@"紧凑横向胶囊（默认）", @"多行网格"]]];
+    [items addObject:[self choice:@"网格每行应用数" key:@"GridColumns" values:@[@"three", @"two", @"auto"] titles:@[@"三列（默认）", @"两列", @"自动"]]];
+    [items addObject:[self group:@"背景与文字" footer:@"背景 0 为透明、100 为不透明，磨砂独立控制。文字默认跟随系统；复杂壁纸建议增加背景不透明度以保持对比。仅影响插件，不改变隐私规则。"]];
+    [items addObject:[self slider:@"背景不透明度" key:@"PanelBackgroundOpacity" low:0 high:100 fallback:0 step:1]];
+    [items addObject:[self toggle:@"磨砂背景" key:@"PanelBlur"]];
+    [items addObject:[self toggle:@"静态渐变文字" key:@"GradientText"]];
     [items addObject:[self choice:@"渐变配色（双色 / 四色）" key:@"TextPalette" values:IDTextPaletteValues() titles:IDTextPaletteTitles()]];
-    [items addObject:[self choice:@"纯色文字（关闭渐变时）" key:@"SolidText" values:@[@"label", @"white", @"black"] titles:@[@"跟随系统（默认）", @"纯白", @"纯黑"]]];
-    [items addObject:[self toggle:@"轻阴影增强对比（默认关闭）" key:@"TextShadow"]];
-    [items addObject:[self group:@"面板位置与大小（单位：点）" footer:@"锁屏与通知中心共用。顶部偏移从窗口安全区与通知控制器的交集顶部向下计算；默认 220 点是保守预留，不是已验证的时钟避让，UIKit 安全区本身不含锁屏时钟。不会移动或读取时钟视图。如仍挡住时间，请增加顶部偏移。左右边距控制宽度；高度是上限，卡片少时自动缩小。旋转后按实际窗口重新限界，底部预留 110 点给快捷按钮；极小空间保留原生列表。拖动约每 120ms 合并更新，无需注销。"]];
-    [items addObject:[self slider:@"顶部向下偏移（默认 220）" key:@"PanelTopOffset" low:0 high:420 fallback:220 step:10]];
-    [items addObject:[self slider:@"左右边距（默认 8）" key:@"PanelSideInset" low:8 high:64 fallback:8 step:2]];
-    [items addObject:[self slider:@"面板最大高度（默认 360）" key:@"PanelMaxHeight" low:240 high:1000 fallback:360 step:10]];
+    [items addObject:[self choice:@"纯色文字" key:@"SolidText" values:@[@"label", @"white", @"black"] titles:@[@"跟随系统（默认）", @"纯白", @"纯黑"]]];
+    [items addObject:[self toggle:@"文字轻阴影" key:@"TextShadow"]];
+    [items addObject:[self group:@"位置与大小" footer:@"单位：点。顶部偏移默认 220，不保证避开锁屏时钟；遮挡时请增大偏移。高度为上限，内容少时自动缩小。"]];
+    [items addObject:[self slider:@"顶部偏移" key:@"PanelTopOffset" low:0 high:420 fallback:220 step:10]];
+    [items addObject:[self slider:@"左右边距" key:@"PanelSideInset" low:8 high:64 fallback:8 step:2]];
+    [items addObject:[self slider:@"最大高度" key:@"PanelMaxHeight" low:240 high:1000 fallback:360 step:10]];
     PSSpecifier *resetLayout = [PSSpecifier preferenceSpecifierNamed:@"恢复默认位置与大小" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     resetLayout.buttonAction = @selector(resetPanelLayout); [items addObject:resetLayout];
-    [items addObject:[self group:@"手动清理通知" footer:@"点击面板垃圾桶：选中应用只清理该应用；全部则处理全部应用。两种范围始终先确认，系统真实清除不可撤销。仅处理点击时的快照，新到通知不纳入。不自动/定时清理。关键、受保护、不可清理或保护能力未知的通知跳过；接口或解锁状态无法验证时按钮停用，原因显示在面板与诊断中。应用筛选不会扩大清理范围。"]];
-    [items addObject:[self toggle:@"启用手动通知清理（始终确认）" key:@"EnableClearing"]];
-    [items addObject:[self group:@"面板布局与排序" footer:@"默认保留横向紧凑胶囊；网格默认每行三个应用（不是强制三行）；小屏或较大辅助字体自动降为两列或一列，长名称截断，图标、计数及置顶操作保留。网格最多显示三行，超出后在面板内部滚动。置顶应用总是优先，其余按所选方式排序；相同项使用固定应用标识打破平局。"]];
-    [items addObject:[self choice:@"分类视觉密度" key:@"CategoryStyle" values:@[@"mini", @"standard"] titles:@[@"迷你（默认，保留 44 点可访问点击区）", @"标准"]]];
-    [items addObject:[self choice:@"显示布局" key:@"LayoutMode" values:@[@"compact", @"grid"] titles:@[@"紧凑横向胶囊（默认）", @"多行网格"]]];
-    [items addObject:[self choice:@"网格每行应用数" key:@"GridColumns" values:@[@"three", @"two", @"auto"] titles:@[@"三列（默认，小屏或大字自动降列）", @"两列（必要时降为一列）", @"自动（按宽度与字体选择）"]]];
-    [items addObject:[self choice:@"应用排序" key:@"SortMode" values:@[@"recent", @"count", @"name"] titles:@[@"最近通知优先（默认）", @"通知数量从多到少", @"应用名称（本地语言）"]]];
-    [items addObject:[self group:@"应用置顶" footer:@"长按应用胶囊可置顶 / 取消，带图钉标记；长按不会同时切换筛选。也可在下面用应用名称管理，无需输入应用标识。"]];
-    [items addObject:[PSSpecifier preferenceSpecifierNamed:@"管理置顶应用" target:self set:NULL get:NULL detail:IDPinnedAppsController.class cell:PSLinkCell edit:Nil]];
-    [items addObject:[self group:@"每次打开通知中心" footer:@"默认每次打开显示全部。开启后仅在下次真正打开时恢复上次应用；关闭界面时仍先恢复全部原生通知。若该应用已无通知，自动回到全部。关键提醒不会因筛选而隐藏。"]];
-    [items addObject:[self toggle:@"记住上次筛选的应用" key:@"RememberFilter"]];
-    [items addObject:[self group:@"性能诊断" footer:@"默认关闭。开启后记录单调时钟测量的 snapshot/render/refresh/disappear 次数及最大耗时（毫秒）；只记录阶段和数字，不含通知正文。慢任务超过 32ms 时最多每 5 秒一条日志。打开通知中心后刷新下方状态，可用于排查后台切换卡顿；这些计时不能替代真机帧率跟踪。"]];
-    [items addObject:[self toggle:@"性能计时（默认关闭）" key:@"PerformanceDiagnostics"]];
-    [items addObject:[self group:@"运行状态 / 诊断" footer:[self diagnostics]]];
-    PSSpecifier *refresh = [PSSpecifier preferenceSpecifierNamed:@"刷新运行状态" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
-    refresh.buttonAction = @selector(refreshStatus); [items addObject:refresh];
+    [items addObject:[self group:@"手动清理" footer:@"垃圾桶按当前应用或全部范围清理，始终确认且不可撤销。仅处理点击时快照；受保护、不可清理或能力未知的通知跳过。不自动清理。"]];
+    [items addObject:[self toggle:@"启用手动清理" key:@"EnableClearing"]];
+    [items addObject:[self group:@"高级与恢复" footer:@"性能计时默认关闭，仅记录阶段与耗时，不含通知内容。分组异常可重试初始化；不会清除通知。"]];
+    [items addObject:[self toggle:@"性能计时" key:@"PerformanceDiagnostics"]];
     PSSpecifier *retry = [PSSpecifier preferenceSpecifierNamed:@"重试初始化 / 恢复分组" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     retry.buttonAction = @selector(retry); [items addObject:retry];
-    [items addObject:[self group:@"兼容性与体验版边界" footer:@"0.1.5 已获用户确认可用；用户已确认 0.1.8 在 iOS17 + Relaxin 可隐藏原生列表，但卡片区域空白；0.1.9 修正布局，尚未完成真实消息预览；新交互仍需你的 iOS 17 + Relaxin 真机验收。私有通知接口可能因系统小版本而异。Relaxin 使用原生 RootHide 包；Rootless 仅供其他 Rootless 环境。设置入口依赖 PreferenceLoader。hooks-installed 不等同于运行验证通过。"]];
+    [items addObject:[self group:@"关于与兼容性" footer:@"MoWang · iOS 15–17。Relaxin 使用 RootHide 包；其他 Rootless 环境使用 Rootless 包。依赖 PreferenceLoader；私有系统接口兼容性需真机验证。"]];
     _specifiers = items; return _specifiers;
 }
 - (void)refreshStatus { _specifiers = nil; [self reloadSpecifiers]; }

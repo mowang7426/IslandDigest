@@ -173,7 +173,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.18.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.19.startup-pending";
 #endif
 }
 
