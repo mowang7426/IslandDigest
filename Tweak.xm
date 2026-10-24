@@ -1516,8 +1516,11 @@ static BOOL IDOpenFeedback(NSString *message) {
         @catch (NSException *exception) { [state disable]; }
         IDRecordPerformance(@"ownerWillDisappearPre", preStarted);
         double origStarted = IDPerformanceStart();
-        @try { %orig; }
-        @finally { IDRecordPerformance(@"ownerWillDisappearOrig", origStarted); }
+        @try {
+            %orig;
+        } @finally {
+            IDRecordPerformance(@"ownerWillDisappearOrig", origStarted);
+        }
         double postStarted = IDPerformanceStart();
         // No UIKit work added after Apple's callback.
         IDRecordPerformance(@"ownerWillDisappearPost", postStarted);
