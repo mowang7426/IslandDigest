@@ -2,7 +2,7 @@ TARGET := iphone:clang:16.5:15.0
 ARCHS := arm64 arm64e
 include $(THEOS)/makefiles/common.mk
 BUNDLE_NAME := IslandDigestPrefs
-IslandDigestPrefs_FILES := IDPrefs.m
+IslandDigestPrefs_FILES := IDPrefs.m IDDiagnosticsController.m
 IslandDigestPrefs_CFLAGS := -fobjc-arc
 IslandDigestPrefs_FRAMEWORKS := UIKit
 IslandDigestPrefs_PRIVATE_FRAMEWORKS := Preferences

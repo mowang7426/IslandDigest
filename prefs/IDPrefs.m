@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import "../IDShared.h"
 #import "../IDTextPalette.h"
+#import "IDDiagnosticsController.h"
 
 // Present in Preferences runtime (iOS 15–17), omitted by Theos' minimal header.
 @interface PSSpecifier (IDListValues)
@@ -155,7 +156,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.19 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.20 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"插件通知卡片" key:@"ContainedMode"]];
     [items addObject:[self group:@"预览与隐私" footer:@"预览默认关闭。仅在解锁、受保护数据可用且界面可见时读取内容；锁定即清空。可能无法遵循每个 App 的“永不显示预览”，请谨慎开启。内容不联网、不写入日志或偏好。"]];
@@ -201,6 +202,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     PSSpecifier *retry = [PSSpecifier preferenceSpecifierNamed:@"重试初始化 / 恢复分组" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     retry.buttonAction = @selector(retry); [items addObject:retry];
     [items addObject:[self group:@"关于与兼容性" footer:@"MoWang · iOS 15–17。Relaxin 使用 RootHide 包；其他 Rootless 环境使用 Rootless 包。依赖 PreferenceLoader；私有系统接口兼容性需真机验证。"]];
+    [items addObject:[PSSpecifier preferenceSpecifierNamed:@"诊断信息" target:self set:NULL get:NULL detail:IDDiagnosticsController.class cell:PSLinkCell edit:Nil]];
     _specifiers = items; return _specifiers;
 }
 - (void)refreshStatus { _specifiers = nil; [self reloadSpecifiers]; }

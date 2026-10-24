@@ -40,6 +40,9 @@ jobs:
       - name: Check source contracts
         run: |
           python3 tests/check_settings_ui.py
+          python3 tests/check_diagnostics_page.py
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/DiagnosticsSnapshot.m -o /tmp/id-diagnostics-snapshot-tests
+          /tmp/id-diagnostics-snapshot-tests
           python3 tests/check_source.py
           python3 tests/check_contained.py
           python3 tests/check_collapse.py
@@ -100,7 +103,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.19', '${{ matrix.scheme }}'], check=True)
+                          '0.3.20', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package
