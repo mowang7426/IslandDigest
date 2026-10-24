@@ -169,10 +169,6 @@
         @"stackHeight": @(digest.cardStack.bounds.size.height),
         @"reason": self.nativeHideReason ?: @"unknown"
     };
-    if (IDContainedMode && digest.cardNotice) {
-        digest.cardContentDirty = YES;
-        digest.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", redacted ? @"系统策略未确认或设备条件不足，部分内容已隐藏" : @"解锁预览已满足当前门控；无法核验每 App 的 Never 映射", self.nativeHideReason];
-    }
     } @finally { self.nativeVisibilityUpdating = NO; }
 }
 - (void)dropContainedContent {

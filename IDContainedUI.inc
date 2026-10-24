@@ -18,7 +18,8 @@
         view.accessibilityCustomActions = nil;
     }
     self.cardScroll.hidden = YES; // Hide one viewport, not 160 arranged views/UISV-hiding constraints.
-    self.cardNotice.text = nil;
+    IDContainedClearView(self.cardNotice);
+    self.cardNotice.hidden = YES;
     self.cardContentDirty = NO; // Never clear before the full privacy walk finishes.
 
     } @finally { IDRecordPerformance(@"scrubCards", perfStarted); }
@@ -74,7 +75,9 @@
     self.cardTap.enabled = NO; self.cardTap.enabled = YES;
     self.retainedLayoutReady = NO;
     self.nativeLayoutSignatureValid = NO;
-    self.cardScroll.hidden = !IDContainedMode; self.cardNotice.hidden = !IDContainedMode;
+    self.cardScroll.hidden = !IDContainedMode;
+    IDContainedClearView(self.cardNotice);
+    self.cardNotice.hidden = YES;
     if (!IDContainedMode) { [self dropCards]; return; }
     IDCoordinator *state = self.coordinator;
     NSUInteger rendered = 0;
@@ -201,10 +204,6 @@
         if ([current containsObject:view]) [self.cardStack removeArrangedSubview:view];
         [self.cardStack insertArrangedSubview:view atIndex:index];
     }];
-    NSUInteger redacted = 0;
-    for (NSDictionary *card in state.cards) if ([card[@"redacted"] boolValue]) redacted++;
-    NSString *policyNote = redacted ? @"系统策略未确认或设备未满足条件，部分内容已隐藏" : @"仅在解锁且受保护数据可用时预览；无法核验每 App 的 Never 映射";
-    self.cardNotice.text = [NSString stringWithFormat:@"%@\n%@", policyNote, state.nativeHideReason ?: @"原生列表保留"];
     self.builtCardCount = rendered;
     [self.cardStack setNeedsLayout];
     [self.cardStack layoutIfNeeded];

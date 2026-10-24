@@ -187,7 +187,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.22.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.23.startup-pending";
 #endif
 }
 
@@ -870,6 +870,7 @@ static BOOL IDSupplementaryReady(id owner) {
     digest.cardNotice.hidden = NO;
     digest.cardContentDirty = YES; // Handoff writes a notice even while card shells remain scrubbed.
     digest.cardNotice.text = @"通知卡片正在刷新；内容已按隐私策略隐藏";
+    [digest setNeedsLayout]; // Only this transient notice reserves footer space.
 }
 - (void)tryFirstFrameHandoff {
     if (!NSThread.isMainThread || !IDHideNative || !IDContainedMode || !self.active

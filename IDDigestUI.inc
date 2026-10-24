@@ -38,7 +38,7 @@
         [self.cardStack.widthAnchor constraintEqualToAnchor:self.cardScroll.frameLayoutGuide.widthAnchor constant:-28]]];
     self.cardNotice = [UILabel new]; self.cardNotice.numberOfLines = 2;
     self.cardNotice.font = [UIFont systemFontOfSize:10]; self.cardNotice.textColor = UIColor.secondaryLabelColor;
-    self.cardNotice.adjustsFontSizeToFitWidth = YES; [self addSubview:self.cardNotice];
+    self.cardNotice.adjustsFontSizeToFitWidth = YES; self.cardNotice.hidden = YES; [self addSubview:self.cardNotice];
     self.clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [self.clearButton setImage:[UIImage systemImageNamed:@"trash"] forState:UIControlStateNormal];
     self.clearButton.tintColor = UIColor.systemRedColor; self.clearButton.enabled = NO;
@@ -156,7 +156,8 @@
     CGSize measured = [self.cardStack systemLayoutSizeFittingSize:CGSizeMake(contentWidth, UILayoutFittingCompressedSize.height)
         withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
     CGFloat content = MAX(44, measured.height + 16);
-    return CGSizeMake(size.width, MIN(category + 38 + content, IDPanelMaxHeight));
+    CGFloat noticeHeight = (!self.cardNotice.hidden && self.cardNotice.text.length) ? 38 : 0;
+    return CGSizeMake(size.width, MIN(category + noticeHeight + content, IDPanelMaxHeight));
 }
 - (CGSize)intrinsicContentSize { return CGSizeMake(UIViewNoIntrinsicMetric, [self sizeThatFits:self.bounds.size].height); }
 - (void)layoutSubviews {
@@ -179,11 +180,12 @@
     self.collapseButton.frame = CGRectMake(MAX(0, width - 96), 0, 44, 44);
     self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44);
     CGFloat category = [self categoryHeightForWidth:width];
-    if (IDContainedMode) category = MIN(category, MAX(66, contentSize.height - 38 - 88));
+    CGFloat noticeHeight = (!self.cardNotice.hidden && self.cardNotice.text.length) ? 38 : 0;
+    if (IDContainedMode) category = MIN(category, MAX(66, contentSize.height - noticeHeight - 88));
     self.scroll.frame = CGRectMake(0, 44, width, MAX(0, category - 66));
     self.hint.frame = CGRectMake(14, category - 19, MAX(0, width - 28), 16);
-    self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, contentSize.height - category - 38));
-    self.cardNotice.frame = CGRectMake(14, MAX(category, contentSize.height - 36), MAX(0, width - 28), 32);
+    self.cardScroll.frame = CGRectMake(0, category, width, MAX(0, contentSize.height - category - noticeHeight));
+    self.cardNotice.frame = noticeHeight > 0 ? CGRectMake(14, MAX(category, contentSize.height - 36), MAX(0, width - 28), 32) : CGRectZero;
     self.scroll.showsHorizontalScrollIndicator = !IDGridLayout;
     self.scroll.showsVerticalScrollIndicator = IDGridLayout;
     self.scroll.alwaysBounceHorizontal = !IDGridLayout;
