@@ -30,6 +30,28 @@ int main(void) {
     IDStableEndPresentation(&cycle); // screen off -> notification wake
     assert(!IDStableUserPull(&cycle, false, false, true));
     assert(IDStablePresentationState(cycle, true) == IDPanelExpanded);
+    // Production explicit-user transition fallback: never infer input from appearance.
+    assert(!IDStableExplicitTransition(&cycle, true, false, true, true, true)); // lock wake
+    assert(!IDStableExplicitTransition(&cycle, false, true, true, true, true)); // dismissal
+    assert(!IDStableExplicitTransition(&cycle, true, true, false, true, true)); // secure app/unknown slider
+    assert(!IDStableExplicitTransition(&cycle, true, true, true, true, false)); // disabled
+    assert(!IDStableExplicitTransition(&cycle, true, true, true, false, true)); // locked or lock unknown
+    assert(IDStableExplicitTransition(&cycle, true, true, true, true, true)); // manager first
+    cycle.compact = false;
+    assert(!IDStableExplicitTransition(&cycle, true, true, true, true, true)); // slider second
+    assert(!IDStableUserPull(&cycle, true, cycle.live, true)); // raw after fallback
+    assert(!cycle.compact); // manual expansion survives every duplicate
+    IDStableEndPresentation(&cycle);
+    assert(IDStableUserPull(&cycle, true, cycle.live, true)); // raw first
+    cycle.compact = false;
+    assert(!IDStableExplicitTransition(&cycle, true, true, true, true, true)); // manager after raw
+    assert(!cycle.compact);
+    IDStableEndPresentation(&cycle); // real dismissal or screen-off
+    assert(!IDStableExplicitTransition(&cycle, true, false, true, true, true)); // notification wake
+    assert(!cycle.live && !cycle.compact);
+    assert(IDStableExplicitTransition(&cycle, true, true, true, true, true)); // next distinct pull
+    assert(cycle.live && cycle.compact);
+    IDStableEndPresentation(&cycle);
     assert(IDStableRetainWhilePending(true, true, false));
     assert(!IDStableRetainWhilePending(true, true, true));
     assert(!IDStableRetainWhilePending(false, true, false));

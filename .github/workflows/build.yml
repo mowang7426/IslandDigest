@@ -47,6 +47,9 @@ jobs:
           python3 tests/check_stable_refresh.py
           python3 tests/check_pull_trigger.py
           python3 tests/check_collapse_diagnostics.py
+          python3 tests/check_presentation_runtime.py
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/RuntimeHookAudit.m -o /tmp/id-runtime-hook-audit-tests
+          /tmp/id-runtime-hook-audit-tests
           cc -Wall -Wextra -Werror tests/CollapseDiagnostics.c -o /tmp/id-collapse-diagnostic-tests
           /tmp/id-collapse-diagnostic-tests
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/CollapseDiagnostics.m -o /tmp/id-collapse-diagnostic-module-tests
