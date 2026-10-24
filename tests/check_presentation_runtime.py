@@ -26,4 +26,10 @@ assert 'IDFinishPresentationAudit();' in t
 assert 'IDAuditPresentationRuntime(self.owner);' in t
 assert '%hook UIGestureRecognizer' not in t and '%hook UIView\n' not in t
 assert '%p' not in a and 'NSLog' not in a
+assert 'ID_VERSION @"0.3.17"' in (r/'IDShared.h').read_text()
+p = (r/'prefs/IDPrefs.m').read_text()
+for key in ('runtimeManager', 'runtimeSlider', 'ownerAncestors', 'hookAudit', 'transitionSample', 'installedExpected', 'targetExpectedNow', 'runtimeExpectedNow'):
+    assert '@"'+key+'"' in p
+assert 'n < 7' in p and 'IDAuditFlag' in p
+assert '[rows addObject:@{}]' in a
 print('PASS explicit-user presentation, primary identity, cross-entry dedup, exact hook/runtime audit contracts')

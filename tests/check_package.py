@@ -150,6 +150,11 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         for selector in (b"_presentGestureBeganWithGestureRecognizer:", b"_handleIndirectPresentGesture:", b"recordCollapseDiagnostic:reason:consumed:"):
             assert selector in binary, selector
         assert b"collapseSummary" in prefs_binary
+    if expected_version == "0.3.17":
+        for key in (b"runtimeManager", b"runtimeSlider", b"ownerAncestors", b"hookAudit", b"transitionSample", b"installedExpected", b"targetExpectedNow", b"runtimeExpectedNow"):
+            assert key in binary and key in prefs_binary, ("missing runtime audit", key)
+        for selector in (b"coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", b"setPresented:forUserGesture:animated:withCompletion:"):
+            assert selector in binary, selector
     check_binary(binary, expected_install_name, scheme, "tweak")
     # Theos bundle.mk deliberately emits MH_DYLIB with its full bundle executable
     # install name (unlike tweak.mk's @loader_path/@rpath identity).
