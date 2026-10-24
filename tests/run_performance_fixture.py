@@ -16,6 +16,9 @@ static double IDMonotonic(void) { reads++; return now; }
 '''+ 'static double IDPerformanceStart(void)'+helpers+r'''
 int main(void) { @autoreleasepool {
  IDDiagnostics=[NSMutableDictionary new]; now=1;
+ assert(IDDiagnosticAvailability(@{}, @"0.3.22").length);
+ assert(IDCollapseSummary(@{}).length);
+ assert(IDRuntimeSummary(@{}).length);
  assert(IDPerformanceStart()==0 && reads==0);
  IDRecordPerformance(@"scrubCards",0); assert(!IDDiagnostics.count && reads==0);
  IDPerformanceDiagnostics=YES;
@@ -30,7 +33,13 @@ int main(void) { @autoreleasepool {
  IDRecordPerformance(@"scrubCards",now); assert([IDDiagnostics[@"perfCount_scrubCards"] unsignedIntegerValue]==1000000);
  for (NSString *stage in @[@"cancelSnapshot",@"restoreFilter",@"scrubCards",@"restoreNative",@"dropContent",@"ownerWillDisappearPre",@"ownerWillDisappearOrig",@"ownerWillDisappearPost",@"ownerWillDisappearTotal"]) {
   IDRecordPerformance(stage,now);
-  NSString *text=IDDiagnosticsSummary(IDDiagnosticSnapshot(IDDiagnostics,0));
+  NSDictionary *snapshot=IDDiagnosticSnapshot(IDDiagnostics,0);
+  for (NSString *prefix in @[@"perfCount_", @"perfMaxMs_"]) {
+   NSString *key=[prefix stringByAppendingString:stage];
+   assert([snapshot[key] isKindOfClass:NSNumber.class]);
+   assert([snapshot[key] isEqual:IDDiagnostics[key]]);
+  }
+  NSString *text=IDDiagnosticsSummary(snapshot);
   assert([text containsString:[@"perfCount_" stringByAppendingString:stage]]);
   assert([text containsString:[@"perfMaxMs_" stringByAppendingString:stage]]);
  }

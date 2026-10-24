@@ -19,6 +19,13 @@ static NSDictionary *IDDiagnosticSnapshot(id input, NSUInteger depth) {
         id value = input[key];
         result[key] = [value isKindOfClass:NSNumber.class] ? value : IDDiagnosticScalar(value);
     }
+    for (NSString *stage in @[@"cancelSnapshot", @"restoreFilter", @"scrubCards", @"restoreNative", @"dropContent", @"ownerWillDisappearPre", @"ownerWillDisappearOrig", @"ownerWillDisappearPost", @"ownerWillDisappearTotal"]) {
+        for (NSString *prefix in @[@"perfCount_", @"perfMaxMs_"]) {
+            NSString *key = [prefix stringByAppendingString:stage];
+            id value = input[key];
+            result[key] = [value isKindOfClass:NSNumber.class] ? value : IDDiagnosticScalar(value);
+        }
+    }
     if ([input[@"updated"] isKindOfClass:NSDate.class]) result[@"updated"] = input[@"updated"];
     for (NSString *key in @[@"beforeExitSample", @"beginAppearanceSample", @"collapseDiagnostic", @"directApplySample", @"helper", @"indirect", @"lastConsumed", @"nativeLastActiveDecision", @"primaryBoundary", @"raw", @"renderSample", @"transitionSample"]) result[key] = IDDiagnosticSnapshot(input[key], depth + 1);
     for (NSString *key in @[@"states", @"postStates", @"ownerAncestors", @"hookAudit"]) {
