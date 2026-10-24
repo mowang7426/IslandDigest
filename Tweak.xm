@@ -59,23 +59,36 @@ static void IDRecordPerformance(NSString *stage, double started) {
         NSLog(@"[IslandDigest performance] stage=%@ duration_ms=%.1f", stage, ms);
     } // No notification text, bounded keys and rate-limited slow logs only.
 }
-static void IDStatus(NSString *stage, NSString *reason) {
-    if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
+#include "IDDeferredStatus.inc"
+static NSDictionary *IDBuildStatusSnapshot(void) {
+    // Deferred bounded metadata only. Never read preferences in a transition.
     IDDiagnostics[@"collapseDiagnostic"] = IDCollapseSnapshot();
     IDDiagnostics[@"version"] = ID_VERSION;
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
-    IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
+    IDDiagnostics[@"currentPrefEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveCollapse"] = @(IDCollapseOnPresentation);
     IDDiagnostics[@"effectiveContained"] = @(IDContainedMode);
-    IDDiagnostics[@"currentPrefCollapse"] = @(IDPref(@"CollapseOnPresentation", NO));
+    IDDiagnostics[@"currentPrefCollapse"] = @(IDCollapseOnPresentation);
+    IDDiagnostics[@"preferenceSample"] = @"loaded-options-not-disk";
     IDDiagnostics[@"collapseCycleLive"] = @(IDPresentationCycle.live);
     IDDiagnostics[@"collapseCycleCompact"] = @(IDPresentationCycle.compact);
     if (!IDDiagnostics[@"collapseGestureCount"]) IDDiagnostics[@"collapseGestureCount"] = @0;
-    IDDiagnostics[@"currentPrefGrouping"] = @(IDPref(@"Grouping", YES));
+    IDDiagnostics[@"currentPrefGrouping"] = @(IDGrouping);
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
     IDDiagnostics[@"updated"] = NSDate.date;
+    // Deep immutable property-list ownership: background serialization cannot
+    // race subsequent mutations of nested main-thread diagnostics.
+    return CFBridgingRelease(CFPropertyListCreateDeepCopy(kCFAllocatorDefault,
+        (__bridge CFPropertyListRef)IDDiagnostics, kCFPropertyListImmutable));
+}
+static void IDStatus(NSString *stage, NSString *reason) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ IDStatus(stage, reason); });
+        return;
+    }
+    if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
     IDDiagnostics[@"stage"] = stage;
     IDDiagnostics[@"reason"] = reason ?: @"";
     static double lastWrite;
@@ -83,7 +96,7 @@ static void IDStatus(NSString *stage, NSString *reason) {
     BOOL repeated = [lastStage isEqualToString:stage] && [lastReason isEqualToString:reason ?: @""];
     if (repeated && IDMonotonic() - lastWrite < 2) return;
     lastWrite = IDMonotonic(); lastStage = [stage copy]; lastReason = [reason copy] ?: @"";
-    [IDDiagnostics writeToFile:IDStatusPath atomically:YES];
+    IDQueueStatusWrite();
 }
 static void IDLoadOptions(void) {
     IDReloadPreferences();
@@ -173,7 +186,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.20.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.21.startup-pending";
 #endif
 }
 
@@ -1077,8 +1090,9 @@ static BOOL IDSupplementaryReady(id owner) {
     self.openingPending = NO;
     self.selected = nil; // actual native state must always be restored on disappearance.
     if (!IDRememberFilter) {
+        // RememberFilter=NO never consumes DesiredApp; selection/preferences
+        // changes already clear persistence. Exit only clears session state.
         self.desiredSelection = nil;
-        if (IDPreferenceValue(@"DesiredApp")) IDWritePreference(@"DesiredApp", nil);
     }
     [self resetFilter]; // Restore actual native filter state, even on teardown.
     IDRecordPerformance(@"disappear", started);
