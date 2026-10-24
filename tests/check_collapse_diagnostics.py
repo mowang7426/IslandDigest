@@ -5,7 +5,7 @@ t = (r/'Tweak.xm').read_text()
 d = (r/'IDCollapseDiagnostics.inc').read_text()
 p = (r/'prefs/IDPrefs.m').read_text()
 raw = t.split('%group IDPullInput')[1].split('%group IDPullHelperProbe')[0]
-assert raw.index('IDCollapseEnter(0, gesture)') < raw.index('if (NSThread.isMainThread')
+assert raw.index('IDCollapseEnter(0, gesture)') < raw.index('%orig;')
 assert raw.index('%orig;') < raw.index('IDCollapseExit(0, gesture, idEvent)')
 for group, index in [('IDPullHelperProbe', 1), ('IDPullIndirectProbe', 2)]:
     body = t.split('%group '+group)[1].split('%group ')[0]
@@ -13,7 +13,7 @@ for group, index in [('IDPullHelperProbe', 1), ('IDPullIndirectProbe', 2)]:
     assert body.count('%orig;') == 1
     for forbidden in ('IDStableUserPull', 'IDApplyPullCollapse', 'IDStableEndPresentation', 'IDCollapseDecision'):
         assert forbidden not in body
-assert t.count('IDStableUserPull(&IDPresentationCycle') == 1
+assert t.count('IDStableUserPull(&IDPresentationCycle') == 0
 assert 'IDCollapseRaw = {0}' in d and 'pthread_mutex_lock' in d
 assert 'phase != UIGestureRecognizerStateChanged' in d
 enter = d.split('static uint64_t IDCollapseEnter')[1].split('static void IDCollapseFlushSoon')[0]

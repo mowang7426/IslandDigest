@@ -48,8 +48,13 @@ jobs:
           python3 tests/check_pull_trigger.py
           python3 tests/check_collapse_diagnostics.py
           python3 tests/check_presentation_runtime.py
+          python3 tests/check_primary_cycle.py
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/RuntimeHookAudit.m -o /tmp/id-runtime-hook-audit-tests
           /tmp/id-runtime-hook-audit-tests
+          clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/PrimaryDispatch.m -o /tmp/id-primary-dispatch-tests
+          /tmp/id-primary-dispatch-tests
+          cc -Wall -Wextra -Werror tests/PrimaryCycle.c -lm -o /tmp/id-primary-cycle-tests
+          /tmp/id-primary-cycle-tests
           cc -Wall -Wextra -Werror tests/CollapseDiagnostics.c -o /tmp/id-collapse-diagnostic-tests
           /tmp/id-collapse-diagnostic-tests
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/CollapseDiagnostics.m -o /tmp/id-collapse-diagnostic-module-tests
@@ -94,7 +99,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.17', '${{ matrix.scheme }}'], check=True)
+                          '0.3.18', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

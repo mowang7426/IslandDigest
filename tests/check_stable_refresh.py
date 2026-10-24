@@ -11,7 +11,7 @@ assert 'IDStableAppearanceState' not in t
 for name in ('_handlePresentGesture:', '_endTransitionToAppeared:', 'noteScreenDidTurnOff'):
     assert name in t
 assert 'IDInstallPullHooks(); // Independent retry' in t
-assert 'IDStableUserPull(&IDPresentationCycle' in t
+assert '#include "IDPrimaryLifecycle.inc"' in t
 assert 'IDStableBeginPresentation(&IDPresentationCycle' not in t
 assert 'IDStableEndPresentation(&IDPresentationCycle)' in t
 assert 'if (!IDContainedMode || !self.overlay) self.collapseState = IDPanelExpanded' in t

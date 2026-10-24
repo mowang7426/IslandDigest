@@ -5,12 +5,7 @@ t = (r/'Tweak.xm').read_text()
 p = (r/'prefs/IDPrefs.m').read_text()
 s = (r/'IDShared.h').read_text()
 hook = t.split('%group IDPullInput')[1].split('%group IDPullTransitionEnd')[0]
-assert 'UIGestureRecognizerStateBegan' in hook
-assert '[gesture isKindOfClass:UIGestureRecognizer.class]' in hook
-assert 'objc_getAssociatedObject(gesture, &IDPullBeganKey)' in hook
-assert 'phase == UIGestureRecognizerStateCancelled || phase == UIGestureRecognizerStateFailed' in hook
-assert hook.index('IDStableUserPull(') < hook.index('%orig;')
-assert 'isPresented' not in hook
+assert 'IDStableUserPull' not in hook and 'IDApplyPullCollapse' not in hook
 apply = t.split('static void IDApplyPullCollapse(void) {')[1].split('static void IDPullEnded')[0]
 for call in ('[state cancelClear]', '[state cancelCollapse]', 'state.collapseState = IDStablePresentationState', 'updateCollapsePresentation', '[state updatePanelGeometry]', '[state.owner.view layoutIfNeeded]'):
     assert call in apply, call
@@ -24,7 +19,7 @@ assert 'if (IDHooksInstalled) {\n        IDInstallPullHooks();' in t
 assert t.index('%init(IDMain);') < t.rindex('IDInstallPullHooks();')
 for reason in ('class-missing', 'selector-missing', 'return-or-arity-mismatch', 'argument-ABI-mismatch'):
     assert reason in t
-for key in ('collapseInputHook','collapseEndHook','collapseScreenHook','collapseGestureCount','effectiveCollapse','currentPrefCollapse','effectiveContained','collapseCycle','collapseCycleLive','collapseCycleCompact','collapseLastReason','collapseLastEnd'):
+for key in ('collapseInputHook','collapseEndHook','collapseScreenHook','effectiveCollapse','currentPrefCollapse','effectiveContained','collapseCycle','collapseCycleLive','collapseCycleCompact','collapseLastReason','collapseLastEnd'):
     assert f'@"{key}"' in t and f'@"{key}"' in p, key
 assert 'return CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)' in s
 assert 'if (!IDWritePreference(key, value))' in p
@@ -35,5 +30,5 @@ begin = t.split('- (void)beginAppearance {')[1].split('- (void)endAppearance {')
 assert 'IDStableUserPull' not in begin
 model = t.split('static void IDModelDidChange(void) {')[1].split('static void IDRedactContainedNow')[0]
 assert 'IDStableUserPull' not in model and 'IDApplyPullCollapse' not in model
-assert t.count('IDStableUserPull(&IDPresentationCycle') == 1
+assert t.count('IDStableUserPull(&IDPresentationCycle') == 0
 print('PASS 0.3.15 direct recognizer began, independent ABI probes/retries, immediate constraints, settings sync/read/diagnostics and no owner/wake/model trigger')
