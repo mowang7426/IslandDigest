@@ -1,0 +1,153 @@
+{
+  "baseline": "c52081bf7bb51d67fee758176b04aeb896594cf2",
+  "controls": {
+    "Enabled": [
+      "toggle",
+      "]];"
+    ],
+    "Grouping": [
+      "toggle",
+      "]];"
+    ],
+    "ShowCounts": [
+      "toggle",
+      "]];"
+    ],
+    "AllowPreviewWhenUnlocked": [
+      "toggle",
+      "]];"
+    ],
+    "ContainedMode": [
+      "toggle",
+      "]];"
+    ],
+    "CollapseOnPresentation": [
+      "toggle",
+      "];"
+    ],
+    "HideNativeList": [
+      "toggle",
+      "];"
+    ],
+    "AlwaysHideNativeList": [
+      "toggle",
+      "];"
+    ],
+    "PanelBackgroundOpacity": [
+      "slider",
+      " low:0 high:100 fallback:0 step:1]];"
+    ],
+    "PanelBlur": [
+      "toggle",
+      "]];"
+    ],
+    "GradientText": [
+      "toggle",
+      "]];"
+    ],
+    "TextPalette": [
+      "choice",
+      " values:IDTextPaletteValues()"
+    ],
+    "SolidText": [
+      "choice",
+      " values:@[@\"label\", @\"white\", @\"black\"]"
+    ],
+    "TextShadow": [
+      "toggle",
+      "]];"
+    ],
+    "PanelTopOffset": [
+      "slider",
+      " low:0 high:420 fallback:220 step:10]];"
+    ],
+    "PanelSideInset": [
+      "slider",
+      " low:8 high:64 fallback:8 step:2]];"
+    ],
+    "PanelMaxHeight": [
+      "slider",
+      " low:240 high:1000 fallback:360 step:10]];"
+    ],
+    "EnableClearing": [
+      "toggle",
+      "]];"
+    ],
+    "CategoryStyle": [
+      "choice",
+      " values:@[@\"mini\", @\"standard\"]"
+    ],
+    "LayoutMode": [
+      "choice",
+      " values:@[@\"compact\", @\"grid\"]"
+    ],
+    "GridColumns": [
+      "choice",
+      " values:@[@\"three\", @\"two\", @\"auto\"]"
+    ],
+    "SortMode": [
+      "choice",
+      " values:@[@\"recent\", @\"count\", @\"name\"]"
+    ],
+    "RememberFilter": [
+      "toggle",
+      "]];"
+    ],
+    "PerformanceDiagnostics": [
+      "toggle",
+      "]];"
+    ]
+  },
+  "methods": {
+    "- (PSSpecifier *)toggle:": "f365c3af3e3af3dd9bad49d1f6b487d89fdad31b6a371008f856ba47edbd740a",
+    "- (PSSpecifier *)choice:": "44c7e5de05a4149f064d7a199d8427ca44e86073758f7039ec44a3d9edc9014e",
+    "- (PSSpecifier *)slider:": "9bed128cc5eb36720a33e74d5b5d2342fd3632285d16e341e94c70d838d0895b",
+    "- (id)valueForSpecifier:": "c2a8aa11bc778a9a1df3795f1717c16dac45132485eb7be6a47fcadfb6d5f430",
+    "- (void)resetPanelLayout": "760cec9230c64b7aa2e15ac16058e4c35cc453d7e487614fab2d5a31e618ac13",
+    "- (void)setPinned:": "9d4bdccbb4d26a1c185a69fdedaac1b331099c81ea70f4b924519b6ed1441e4e",
+    "- (void)resetPins": "576b372ebf75953e52f2b0c7cf10cbd7a9491907bfb1cb2560c3d053af6f675c"
+  },
+  "unchanged": {
+    "IDCardReadiness.h": "816f576260c397d2c5f6a70add764e5c1627ca60523bd8354c14088b70002b25",
+    "IDClearCoordinator.inc": "10ca7a1bc82701eacbb49609572d893c12272807534a40a9510683f8727c3129",
+    "IDClearLogic.h": "fb9d002e36805e66b72ffb14ee3be381ed8cfaa606bd538ba5c446436f6c707f",
+    "IDClearSupport.inc": "d6913a58ef3e0de6e89a8ee2e7f18fed6732f06604cff6e454a0a6f7c1685960",
+    "IDCollapseCoordinator.inc": "79b59f436251577b574b32fa0dc39c58995db88380627feb32496063f80de528",
+    "IDCollapseDiagnostics.h": "4b376d18001f469f6d113c36b4183b80998ab8ed64dd8aa9fd53efe17e74fef3",
+    "IDCollapseDiagnostics.inc": "23d9d7b422e3deb1af10903adb82e42c1f95ffd86e9ca3ff227199beca804592",
+    "IDCollapseLogic.h": "a63bab251930a8d198e6db7751038db35cb72503aecda266ab5aca9d492287a6",
+    "IDContainedCoordinator.inc": "c5b3852bd653feef81d9f1e3f399f62dcd182fafb506016ebafb84ee31b268a0",
+    "IDContainedLogic.h": "3e3fd9fe86ef3e0febe22deea40fcc94b6df8985ac50e68c6fe0c088ebcaafdf",
+    "IDContainedSupport.inc": "cd57f3a3a25d5a4284bd0d2e194b13bb0267218f4d2aa0771fb9ec641b9b3542",
+    "IDContainedUI.inc": "74f1bd44e39c2acab1710397948a9598f78971d381d14e9ce698f4ebf6806baf",
+    "IDDigestUI.inc": "d2fcd37780c75f45affba357ea90809e3a52e8b4ebcc0a187205f71c70760476",
+    "IDEnumerationABI.h": "6640bdd56414504db755f4971f685d318e58a9f4742e98ff34ab81a3a2b1ff7b",
+    "IDEnumerationAdapter.inc": "da77e23af37346c425edf1b794cac4e6b6e52321f4bc1b6c8699daad10ae37f4",
+    "IDExperienceLogic.h": "04a80da54bf9a641269a938a1ce4d928cea98c3489b9f22f60ef129567010fb4",
+    "IDFirstFrameHandoff.h": "962bd8475f7603172f5ff1b789e8eb18ab625a7e8be9d340eb248e1dac592d02",
+    "IDLayoutLogic.h": "e34956af68e835bb0c4b09859a3c4d20256324f364b4dd1d796a23249369a7a6",
+    "IDNotificationIndex.inc": "7c2fd382b7d54e9efdfb0419059371cf5095fb65a29ca1e51b1c9d72de2aa56c",
+    "IDPerformanceLogic.h": "7ed1b06d3c552f248cd987f408599372d89e7a5760287c60f447a636eacb4e88",
+    "IDPresentationRuntime.inc": "f64b6d4b6f39754b21a170714df3c96f52438c2f7724905933e7410d9d85c151",
+    "IDPrimaryCycleLogic.h": "7d1740325462851608a948f7bf6b837bf4f0c05a609bea75e55e380557d8194d",
+    "IDPrimaryLifecycle.inc": "e4d63633b236ba85d51add6fc6cbbdcc1e9e7071b5b2d2a0899a4ee783e0415b",
+    "IDRuntimeHookAudit.h": "2461a38f31c431cf4ff6d445e6dd03c17833f32e558241f612a6401c8a99ba89",
+    "IDScrollLogic.h": "5acb71a01c5472bf9fab29f9f4c66be3e170d3776d5678798a888fdfb431b955",
+    "IDShared.h": "31753774c440adfa90af66d75794bf30c45ee71c81666710b4e4873614ededc0",
+    "IDSnapshotLogic.h": "e37987cd1b1fe775e13653286afdd010c804865e8d9cfd2ef89ce4a2be46d434",
+    "IDStableRefreshLogic.h": "e17954ef69c46dfe46bf5dc1724d5e5f341a7c1e60d50a073ec4da4a7f63a4f7",
+    "IDTextPalette.h": "62ddaa01d4fdf7579f8d7dde09b470460315e59716ec6f804f177d662055bd5c",
+    "IDTextStyle.inc": "c2901fc4a27221c874da8cb32b74e941155f77eac5daec2cade800a3c124e863",
+    "IslandDigest-icon.png": "c82ca037bbbd4432efd9e82205166e660ae14486966959a13affb3094b2f6765",
+    "IslandDigest-icon@2x.png": "0324888e6f6cd9b3bfe5934e010603c791fcfd7b7413b9f77cb4e60a6857c265",
+    "IslandDigest-icon@3x.png": "0f99bc979b961ec03f8e6d54ca541ebb64f80a9f2ea9e11d596c2f4f91944e3b",
+    "Tweak.xm": "c61929c167a5a87a821c050f6f8b9274b79a85c43a3949a22278bb511cd2ecc2",
+    "layout/Library/PreferenceLoader/Preferences/IslandDigest.png": "369c7c0405fc6dcd03571cc556d97462d3edf5e0b4c0fb86ea3ece283c3e773c",
+    "layout/Library/PreferenceLoader/Preferences/IslandDigest@2x.png": "ad2e4d864eb16a1c48ede7008116a5531cf6cbdca59f20e858b3d2871c6c0641",
+    "layout/Library/PreferenceLoader/Preferences/IslandDigest@3x.png": "3ae4568e6c46541f041ce62973554f7919ad02378240fd48b6f9bd0b343afc77",
+    "prefs/Resources/IslandDigest-master.png": "c82ca037bbbd4432efd9e82205166e660ae14486966959a13affb3094b2f6765",
+    "prefs/Resources/IslandDigest.png": "369c7c0405fc6dcd03571cc556d97462d3edf5e0b4c0fb86ea3ece283c3e773c",
+    "prefs/Resources/IslandDigest@2x.png": "ad2e4d864eb16a1c48ede7008116a5531cf6cbdca59f20e858b3d2871c6c0641",
+    "prefs/Resources/IslandDigest@3x.png": "3ae4568e6c46541f041ce62973554f7919ad02378240fd48b6f9bd0b343afc77"
+  }
+}

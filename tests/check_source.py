@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.3.18'
+assert info['CFBundleVersion'] == '0.3.19'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -85,7 +85,7 @@ assert 'IDStableScrollOffset(previousOffset.y, hasAnchor, anchorY, anchorViewpor
 assert 'IDCardCoverageUsable(self.cardScroll.contentSize.height, CGRectGetMaxY(self.cardStack.frame))' in ui_contained
 assert 'self.cardTap.enabled = NO; self.cardTap.enabled = YES' in ui_contained
 for key in ('cardsContentHeight', 'cardsViewportHeight', 'cardsStackHeight', 'cardsScrollEnabled'):
-    assert f'@"{key}"' in prefs and f'@"{key}"' in (root/'IDContainedCoordinator.inc').read_text()
+    assert f'@"{key}"' in (root/'IDContainedCoordinator.inc').read_text()
 assert 'return [weakShell accessibilityActivate]' in ui_contained
 assert '- (BOOL)accessibilityActivate' in tweak and 'self.openAction();' in tweak
 for key in ('PanelBackgroundOpacity', 'PanelBlur'):
@@ -99,7 +99,7 @@ assert 'systemBlueColor' not in ui and 'systemGreenColor' not in ui
 feedback = tweak.split('static BOOL IDOpenFeedback(NSString *message) {', 1)[1].split('\n}', 1)[0]
 assert 'IDStatus(@"card-tap-feedback", message)' in feedback
 assert 'cardNotice' not in feedback and 'IDCardFeedbackUntil' not in tweak
-assert '@"stage", @"reason"' in prefs, 'Settings must retain existing feedback diagnostics'
+assert 'IDStatusPath' not in prefs, 'Settings must not read diagnostic state'
 print('PASS 0.2.9 native scroll/tap ownership, shared AX action, transparent defaults, Settings diagnostics')
 assert 'content.userInteractionEnabled = NO' in (root / 'IDContainedUI.inc').read_text()
 assert '打开诊断：点击已收到；正在检查原生动作' in (root / 'IDContainedUI.inc').read_text()
@@ -129,14 +129,14 @@ assert 'hideClearActionInList' in clear and 'lockScreenPersistence' in clear and
 assert 'isAuthenticated' in clear and 'CSCoverSheetViewController' in clear
 assert 'attempt < 2' in clear and 'dispatch_after' in clear and 'while (' not in clear
 assert 'UIAlertActionStyleDestructive' in clear and 'UIAlertActionStyleCancel' in clear
-assert 'clearAvailable' in prefs and 'clearReason' in prefs
+assert 'clearAvailable' in clear and 'clearReason' in clear
 assert '始终确认' in prefs and 'EnableClearing' in prefs
 assert 'IslandDigestClear' in ui and 'clearButton.enabled = NO' in ui
 assert 'IDClearCancel(&_clearGate)' in clear and '[state cancelClear]' in tweak
 assert '#include "../IDClearLogic.h"' in (root/'tests/Clear.c').read_text()
 print('PASS clear source guardrails (not native behavior validation)')
 
-# 0.3.18: actual UIKit constraints, paired with the shared geometry C tests.
+# 0.3.19: actual UIKit constraints, paired with the shared geometry C tests.
 assert 'IDExperienceCategoryGeometry([self rowHeight], IDMiniControls)' in ui
 for contract in (
     'tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO',
@@ -153,10 +153,10 @@ for contract in (
 assert 'content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor' not in ui
 assert 'content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor' not in ui
 assert 'if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption' in prefs
-assert info['CFBundleShortVersionString'] == '0.3.18'
-assert 'Version: 0.3.18' in (root/'control').read_text()
-assert "'0.3.18', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
-assert 'IslandDigest-0.3.18.startup-pending' in tweak
+assert info['CFBundleShortVersionString'] == '0.3.19'
+assert 'Version: 0.3.19' in (root/'control').read_text()
+assert "'0.3.19', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
+assert 'IslandDigest-0.3.19.startup-pending' in tweak
 # The real coordinator, not just the adapter, must leave a pending cursor intact.
 caller = tweak.split('- (void)continueSnapshot:(NSUInteger)generation {', 1)[1].split('- (void)finishSnapshot {', 1)[0]
 pending = caller.split('if (action == IDSnapshotPending) {', 1)[1].split('if (action != IDSnapshotSort) return;', 1)[0]
@@ -165,4 +165,4 @@ assert 'self.snapshotSorting = YES;' in caller and 'state.enumerationCursor = ni
 assert caller.index('return;\n    }\n    if (action != IDSnapshotSort)') < caller.index('NSArray *records = [self.buildRecords copy]')
 assert 'tests/Snapshot.c' in (root/'.github/workflows/build.yml').read_text()
 print('PASS coordinator pending continuation returns before sorting/commit; production state gate is CI-tested')
-print('PASS 0.3.18 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')
+print('PASS 0.3.19 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')

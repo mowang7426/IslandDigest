@@ -24,7 +24,7 @@ assert 'self.capsuleButton.frame = self.bounds;' in u
 for key in ('IslandDigestCollapse', 'IslandDigestCapsule', 'self.capsuleButton.accessibilityLabel', 'self.expandedContent.accessibilityElementsHidden', 'self.collapseButton.frame = CGRectMake(MAX(0, width - 96), 0, 44, 44)', 'self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44)'):
     assert key in u, key
 for key in ('panelCollapseState', 'retainedExpandedLayoutReady', 'capsuleReachable', 'capsuleHideReady'):
-    assert f'@"{key}"' in n and f'@"{key}"' in p
+    assert f'@"{key}"' in n  # Internal diagnostics remain; Settings no longer renders them.
 assert 'IDContainedRepresentationReady(compact, capsuleReady, cardViewportVisible, cardsReady)' in n
 assert 'digest.retainedLayoutReady && [digest expandedCardsLayoutReady]' in n
 assert 'IDExperienceGridColumns' in u and 'GridColumns' in t and 'GridColumns' in p

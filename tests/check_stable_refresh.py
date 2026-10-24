@@ -19,7 +19,7 @@ assert 'IDPresentationCycle.compact = IDPanelCompact' in (r/'IDCollapseCoordinat
 assert 'IDPref(@"CollapseOnPresentation", NO)' in t
 assert p.count('[key isEqualToString:@"CollapseOnPresentation"]') == 2
 assert '每次下拉先折叠' in p and 'supplementary' in p
-assert 'presentationGestureSupported' in t and 'presentationGestureSupported' in p
+assert 'presentationGestureSupported' in t and 'presentationGestureSupported' not in p
 mutation = t.split('static void IDModelDidChange(void) {')[1].split('static void IDRedactContainedNow')[0]
 assert 'if (state.active && !mustScrub) [state cancelSnapshot]' in mutation
 assert 'IDStableRetainWhilePending(YES, self.inserted, self.renderedCards == nil)' in t
