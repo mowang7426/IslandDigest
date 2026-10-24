@@ -12,6 +12,12 @@ static inline bool IDStableUserPull(IDStablePresentation *cycle, bool began, boo
     cycle->live = true; cycle->compact = true;
     return true;
 }
+// Explicit forUserGesture transition flags are not owner visibility or authentication.
+// Multiple entry points for a single presentation must preserve manual expansion.
+static inline bool IDStableExplicitTransition(IDStablePresentation *cycle, bool presenting,
+                                              bool userGesture, bool primarySlider, bool unlocked, bool enabled) {
+    return IDStableUserPull(cycle, presenting && userGesture && primarySlider && unlocked, cycle->live, enabled);
+}
 static inline void IDStableEndPresentation(IDStablePresentation *cycle) {
     cycle->live = false; cycle->compact = false;
 }

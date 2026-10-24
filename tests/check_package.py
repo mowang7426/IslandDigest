@@ -48,15 +48,15 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         info_path = prefs_base + "Info.plist"
         entry_path = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.plist"
         entry_icon = prefix + "Library/PreferenceLoader/Preferences/IslandDigest.png"
-        icon_master = prefs_base + ("IslandDigest-master.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16") else "IslandDigest-icon.png")
-        icon_2x = prefs_base + ("IslandDigest@2x.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16") else "IslandDigest-icon@2x.png")
-        icon_3x = prefs_base + ("IslandDigest@3x.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16") else "IslandDigest-icon@3x.png")
+        icon_master = prefs_base + ("IslandDigest-master.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17") else "IslandDigest-icon.png")
+        icon_2x = prefs_base + ("IslandDigest@2x.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17") else "IslandDigest-icon@2x.png")
+        icon_3x = prefs_base + ("IslandDigest@3x.png" if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17") else "IslandDigest-icon@3x.png")
         icon_bundle = prefs_base + "IslandDigest.png"
         required = {tweak_path, filter_path, prefs_path, info_path, entry_path, entry_icon,
                     icon_master, icon_2x, icon_3x, icon_bundle}
         entry_2x = prefix + "Library/PreferenceLoader/Preferences/IslandDigest@2x.png"
         entry_3x = prefix + "Library/PreferenceLoader/Preferences/IslandDigest@3x.png"
-        if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+        if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
             required.update((entry_2x, entry_3x))
         assert required <= paths.keys(), paths.keys()
         assert all(path in required or (path.startswith(prefs_base) and
@@ -68,13 +68,13 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         info = plistlib.loads(payload.extractfile(paths[info_path]).read())
         assert info["NSPrincipalClass"] == "IDPrefsController"
         assert info["CFBundleVersion"] == expected_version
-        if expected_version in ("0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+        if expected_version in ("0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
             assert info["CFBundleShortVersionString"] == expected_version
         entry = plistlib.loads(payload.extractfile(paths[entry_path]).read())["entry"]
         assert entry["bundle"] == "IslandDigestPrefs" and entry["detail"] == "IDPrefsController"
         binary = payload.extractfile(paths[tweak_path]).read()
         prefs_binary = payload.extractfile(paths[prefs_path]).read()
-        if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+        if expected_version in ("0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
             assert entry["icon"] == "IslandDigest.png" and entry["cell"] == "PSLinkCell"
             assert set(entry) == {"bundle", "cell", "detail", "label", "icon", "isController"}
             assert info["CFBundleIconFiles"] == ["IslandDigest"]
@@ -87,7 +87,7 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
             assert icon[:8] == b'\x89PNG\r\n\x1a\n'
             assert struct.unpack('>II', icon[16:24]) == (size, size), (icon_path, size)
             assert len(icon) > 1000, icon_path
-    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.1.8", "0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"ContainedMode", b"HideNativeList", b"AlwaysHideNativeList", b"alwaysHideActive", b"containedEnabled", b"hideNativeRequested",
                     b"nativeHideSupported", b"nativeHidden", b"nativeHideReason", b"previewPolicyReason",
                     b"cardsRendered", b"cardsRedacted"):
@@ -96,60 +96,65 @@ def check(package, expected_version="0.1.3", scheme="roothide"):
         assert b"AllowPreviewWhenUnlocked" in binary
         assert "Author: MoWang" in metadata
         assert f"IslandDigest-{expected_version}.startup-pending".encode() in binary
-    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.1.9", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.3.0", "0.3.1", "0.3.2", "0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"PanelTopOffset", b"PanelSideInset", b"PanelMaxHeight", b"cardsLayoutReady"):
             assert key in binary and key in prefs_binary, ("missing layout contract", key)
         for selector in (b"cardsReadyForNativeHide", b"setContentInsetAdjustmentBehavior:", b"builtCardCount"):
             assert selector in binary, ("missing readiness contract", selector)
-    if expected_version in ("0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.3", "0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"GradientText", b"TextPalette", b"SolidText", b"TextShadow", b"PerformanceDiagnostics"):
             assert key in binary and key in prefs_binary, ("missing 0.3.3 contract", key)
         assert b"IDNotificationLabel" in binary
-    if expected_version in ("0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.5", "0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"enumerationComplete", b"enumerationState", b"enumerationReadPath",
                     b"collectionClass", b"collectionCount", b"nativeCountKnown", b"nativeModelCount",
                     b"ownerCount", b"activeOwnerCount", b"selectedOwnerState", b"masterEventHooks"):
             assert key in binary and key in prefs_binary, ("missing enumeration contract", key)
         for selector in (b"notificationRequests", b"incomingSectionList", b"historySectionList", b"notificationSections"):
             assert selector in binary, selector
-    if expected_version in ("0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.6", "0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"nativeVisibilityHooks", b"nativeCandidateClass", b"nativeCandidateSameWindow",
                     b"nativeCurrentOwner", b"nativeDecisionStage", b"nativeLastActiveDecision"):
             assert key in binary and key in prefs_binary, ("missing native recovery diagnostics", key)
         for selector in (b"scheduleNativeListVisibility", b"setHidden:", b"layoutSubviews"):
             assert selector in binary, selector
-    if expected_version in ("0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.7", "0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for identifier in (b"cyanPurple", b"pinkOrange", b"whiteCyan", b"auroraFour", b"sunsetFour",
                            b"glacierFour", b"nebulaFour", b"mintFour", b"peachFour", b"coralFour",
                            b"roseFour", b"skyFour", b"emeraldFour"):
             assert identifier in binary and identifier in prefs_binary, ("missing production palette", identifier)
         title = f"灵屿通知 {expected_version}"
         assert title.encode() in prefs_binary or title.encode("utf-16le") in prefs_binary
-    if expected_version in ("0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.8", "0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"cardsReadinessReason", b"cardsReadinessIndex", b"cardsReadinessType",
                     b"cardsReadinessWidth", b"cardsReadinessHeight"):
             assert key in binary and key in prefs_binary, ("missing readiness diagnostics", key)
         for selector in (b"semanticLabelsInView:depth:visible:", b"cardReadinessFailure:index:view:"):
             assert selector in binary, ("missing real readiness traversal", selector)
-    if expected_version in ("0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.10", "0.3.11", "0.3.12", "0.3.13", "0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"enumerationSlices", b"enumerationCaptured", b"selectedRequests", b"cardPage", b"cardPages"):
             assert key in binary and key in prefs_binary, ("missing capacity diagnostics", key)
         for selector in (b"previousCardPage", b"nextCardPage", b"pageNavigationReady"):
             assert selector in binary, ("missing reachable pagination", selector)
-    if expected_version in ("0.3.14", "0.3.15", "0.3.16"):
+    if expected_version in ("0.3.14", "0.3.15", "0.3.16", "0.3.17"):
         for key in (b"CollapseOnPresentation", b"presentationGestureSupported"):
             assert key in binary and key in prefs_binary, ("missing stable refresh setting", key)
-        for selector in ((b"_handlePresentGesture:", b"_endTransitionToAppeared:", b"noteScreenDidTurnOff") if expected_version in ("0.3.15", "0.3.16") else (b"coverSheetSlidingViewControllerUserPresentGestureBegan:", b"coverSheetSlidingViewControllerDidEndTransition:", b"noteScreenDidTurnOff")):
+        for selector in ((b"_handlePresentGesture:", b"_endTransitionToAppeared:", b"noteScreenDidTurnOff") if expected_version in ("0.3.15", "0.3.16", "0.3.17") else (b"coverSheetSlidingViewControllerUserPresentGestureBegan:", b"coverSheetSlidingViewControllerDidEndTransition:", b"noteScreenDidTurnOff")):
             assert selector in binary, ("missing presentation signal", selector)
-    if expected_version in ("0.3.15", "0.3.16"):
+    if expected_version in ("0.3.15", "0.3.16", "0.3.17"):
         for key in (b"collapseInputHook", b"collapseEndHook", b"collapseScreenHook", b"collapseGestureCount", b"effectiveCollapse", b"currentPrefCollapse", b"collapseCycle", b"collapseLastReason"):
             assert key in binary and key in prefs_binary, key
-    if expected_version == "0.3.16":
+    if expected_version in ("0.3.16", "0.3.17"):
         for key in (b"collapseDiagnostic", b"lastAccept", b"lastReject", b"lastConsumed", b"postEvent", b"clearLive", b"clearCompact", b"constraintHeight", b"collapseHelperHook", b"collapseIndirectHook"):
             assert key in binary and key in prefs_binary, ("missing diagnostic contract", key)
         for selector in (b"_presentGestureBeganWithGestureRecognizer:", b"_handleIndirectPresentGesture:", b"recordCollapseDiagnostic:reason:consumed:"):
             assert selector in binary, selector
         assert b"collapseSummary" in prefs_binary
+    if expected_version == "0.3.17":
+        for key in (b"runtimeManager", b"runtimeSlider", b"ownerAncestors", b"hookAudit", b"transitionSample", b"installedExpected", b"targetExpectedNow", b"runtimeExpectedNow"):
+            assert key in binary and key in prefs_binary, ("missing runtime audit", key)
+        for selector in (b"coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", b"setPresented:forUserGesture:animated:withCompletion:"):
+            assert selector in binary, selector
     check_binary(binary, expected_install_name, scheme, "tweak")
     # Theos bundle.mk deliberately emits MH_DYLIB with its full bundle executable
     # install name (unlike tweak.mk's @loader_path/@rpath identity).

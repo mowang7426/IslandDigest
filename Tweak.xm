@@ -21,6 +21,9 @@
 #import "IDFirstFrameHandoff.h"
 #import "IDSnapshotLogic.h"
 #import "IDStableRefreshLogic.h"
+#import "IDRuntimeHookAudit.h"
+static void IDAuditPresentationRuntime(id owner);
+static id IDPresentationManagerIfLoaded(void);
 static char IDStableCardModelKey, IDStableCardRevisionKey, IDStableGroupSignatureKey;
 static BOOL IDCollapseOnPresentation = NO;
 static IDStablePresentation IDPresentationCycle;
@@ -59,7 +62,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
     IDDiagnostics[@"collapseDiagnostic"] = IDCollapseSnapshot();
-    IDDiagnostics[@"version"] = @"0.3.16";
+    IDDiagnostics[@"version"] = ID_VERSION;
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -169,7 +172,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.16.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.17.startup-pending";
 #endif
 }
 
@@ -1032,6 +1035,7 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)beginAppearance {
+    IDAuditPresentationRuntime(self.owner);
     if (self.active) {
         [self recordCollapseDiagnostic:@"beginAppearance" reason:@"already-active" consumed:NO];
         return;
@@ -1620,7 +1624,7 @@ static void IDPullEnded(NSString *reason) {
     uint64_t idEvent = IDCollapseEnter(0, gesture);
     if (NSThread.isMainThread && [gesture isKindOfClass:UIGestureRecognizer.class]) {
         UIGestureRecognizerState phase = [(UIGestureRecognizer *)gesture state];
-        BOOL duplicate = [objc_getAssociatedObject(gesture, &IDPullBeganKey) boolValue];
+        BOOL duplicate = IDPresentationCycle.live || [objc_getAssociatedObject(gesture, &IDPullBeganKey) boolValue];
         objc_setAssociatedObject(gesture, &IDPullBeganKey, @(phase == UIGestureRecognizerStateBegan), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (phase == UIGestureRecognizerStateBegan) {
             IDDiagnostics[@"collapseGestureCount"] = @([IDDiagnostics[@"collapseGestureCount"] unsignedIntegerValue] + 1);
@@ -1691,6 +1695,55 @@ static void IDPullEnded(NSString *reason) {
 %end
 %end
 
+// Header-backed explicit presentation intent. False/unknown never starts a cycle.
+static void IDExplicitPresentation(id manager, id slider, BOOL presenting, BOOL userGesture, NSString *entry) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            IDCollapseIncrement(@"transitionOffMain");
+            IDCollapseDecision(NO, @"transition-off-main-rejected", IDCollapseNextEvent(), nil);
+            IDCollapseFlushSoon();
+        });
+        return;
+    }
+    IDCollapseIncrement(@"transitionEntries");
+    uint64_t event = IDCollapseNextEvent();
+    id primary = IDRead(manager, "coverSheetSlidingViewControllerIfLoaded");
+    BOOL isPrimary = slider && slider == primary;
+    BOOL locked = YES;
+    BOOL lockKnown = IDClearBool(IDRead(manager, "uiLockStateProvider"), "isUILocked", &locked);
+    BOOL unlocked = lockKnown && !locked;
+    BOOL enabled = IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation && IDPullScreenHookInstalled;
+    BOOL wasLive = IDPresentationCycle.live;
+    BOOL accepted = IDStableExplicitTransition(&IDPresentationCycle, presenting, userGesture, isPrimary, unlocked, enabled);
+    NSString *reason = accepted ? @"accepted-explicit-user-presentation" : !presenting ? @"transition-not-presenting" : !userGesture ? @"transition-not-user-gesture" : !isPrimary ? @"transition-primary-unconfirmed" : !lockKnown ? @"transition-ui-lock-unconfirmed" : locked ? @"transition-ui-locked" : !enabled ? @"transition-disabled-or-no-screen-reset" : wasLive ? @"same-live-presentation" : @"transition-rejected";
+    IDCollapseTrace[@"transitionSample"] = @{@"event":@(event), @"entry":entry, @"presenting":@(presenting), @"userGesture":@(userGesture), @"primary":@(isPrimary), @"lockKnown":@(lockKnown), @"uiLocked":@(locked), @"class":IDHookClassName(object_getClass(slider)), @"reason":reason};
+    IDCollapseDecision(accepted, reason, event, slider);
+    IDDiagnostics[@"collapseLastReason"] = reason;
+    if (accepted) {
+        IDDiagnostics[@"collapseCycle"] = @([IDDiagnostics[@"collapseCycle"] unsignedIntegerValue] + 1);
+        IDApplyPullCollapse();
+    }
+    IDAuditPresentationRuntime(nil);
+    IDCollapseFlushSoon();
+}
+%group IDPullExplicitManager
+%hook SBCoverSheetPresentationManager
+- (void)coverSheetSlidingViewController:(id)slider prepareForPresentationTransitionForUserGesture:(BOOL)userGesture {
+    IDExplicitPresentation(self, slider, YES, userGesture, @"manager-prepare-user-presentation");
+    %orig;
+}
+%end
+%end
+%group IDPullExplicitSlider
+%hook SBCoverSheetSlidingViewController
+- (void)setPresented:(BOOL)presented forUserGesture:(BOOL)userGesture animated:(BOOL)animated withCompletion:(id)completion {
+    IDExplicitPresentation(NSThread.isMainThread ? IDPresentationManagerIfLoaded() : nil, self, presented, userGesture, @"slider-setPresented-forUserGesture");
+    %orig;
+}
+%end
+%end
+#include "IDPresentationRuntime.inc"
+
 // Inherited implementations are safe here: Logos internal generator installs an override on
 // the requested class, never a hook on UIViewController or another superclass.
 static NSString *IDPullMethodSupport(Class target, const char *name, const char *argument) {
@@ -1705,7 +1758,29 @@ static void IDInstallPullHooks(void) {
     if (!IDDiagnostics[@"collapseLastReason"]) IDDiagnostics[@"collapseLastReason"] = @"waiting-for-user-pan-began";
     Class sliding = objc_getClass("SBCoverSheetSlidingViewController");
     Class manager = objc_getClass("SBCoverSheetPresentationManager");
-    static BOOL helperInstalled, indirectInstalled;
+    IDPreparePresentationAudit(0, sliding, "_handlePresentGesture:", (IMP)&_logos_method$IDPullInput$SBCoverSheetSlidingViewController$_handlePresentGesture$);
+    IDPreparePresentationAudit(1, sliding, "_presentGestureBeganWithGestureRecognizer:", (IMP)&_logos_method$IDPullHelperProbe$SBCoverSheetSlidingViewController$_presentGestureBeganWithGestureRecognizer$);
+    IDPreparePresentationAudit(2, sliding, "_handleIndirectPresentGesture:", (IMP)&_logos_method$IDPullIndirectProbe$SBCoverSheetSlidingViewController$_handleIndirectPresentGesture$);
+    IDPreparePresentationAudit(3, sliding, "_endTransitionToAppeared:", (IMP)&_logos_method$IDPullTransitionEnd$SBCoverSheetSlidingViewController$_endTransitionToAppeared$);
+    IDPreparePresentationAudit(4, manager, "noteScreenDidTurnOff", (IMP)&_logos_method$IDPullScreenOff$SBCoverSheetPresentationManager$noteScreenDidTurnOff);
+    IDPreparePresentationAudit(5, manager, "coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", (IMP)&_logos_method$IDPullExplicitManager$SBCoverSheetPresentationManager$coverSheetSlidingViewController$prepareForPresentationTransitionForUserGesture$);
+    IDPreparePresentationAudit(6, sliding, "setPresented:forUserGesture:animated:withCompletion:", (IMP)&_logos_method$IDPullExplicitSlider$SBCoverSheetSlidingViewController$setPresented$forUserGesture$animated$withCompletion$);
+    static BOOL helperInstalled, indirectInstalled, explicitManagerInstalled, explicitSliderInstalled;
+    if (!explicitManagerInstalled) {
+        BOOL supported = IDMethod(manager, "coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", "v", 4)
+            && IDArgument(manager, "coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", 2, "@")
+            && IDArgument(manager, "coverSheetSlidingViewController:prepareForPresentationTransitionForUserGesture:", 3, "B");
+        IDDiagnostics[@"collapseExplicitManagerHook"] = supported ? @"supported" : @"ABI-unavailable";
+        if (supported) { %init(IDPullExplicitManager); explicitManagerInstalled = YES; }
+    }
+    if (!explicitSliderInstalled) {
+        const char *selector = "setPresented:forUserGesture:animated:withCompletion:";
+        BOOL supported = IDMethod(sliding, selector, "v", 6) && IDArgument(sliding, selector, 2, "B")
+            && IDArgument(sliding, selector, 3, "B") && IDArgument(sliding, selector, 4, "B")
+            && IDArgument(sliding, selector, 5, "@");
+        IDDiagnostics[@"collapseExplicitSliderHook"] = supported ? @"supported" : @"ABI-unavailable";
+        if (supported) { %init(IDPullExplicitSlider); explicitSliderInstalled = YES; }
+    }
     if (!helperInstalled) {
         NSString *support = IDPullMethodSupport(sliding, "_presentGestureBeganWithGestureRecognizer:", "@");
         IDDiagnostics[@"collapseHelperHook"] = support;
@@ -1731,8 +1806,10 @@ static void IDInstallPullHooks(void) {
         IDDiagnostics[@"collapseScreenHook"] = support;
         if ([support isEqualToString:@"supported"]) { %init(IDPullScreenOff); IDPullScreenHookInstalled = YES; }
     }
+    IDFinishPresentationAudit();
+    IDAuditPresentationRuntime(nil);
     IDDiagnostics[@"presentationGestureSupported"] = @(IDPullHookInstalled);
-    IDDiagnostics[@"collapseSignal"] = @"SBCoverSheetSlidingViewController._handlePresentGesture: / UIGestureRecognizerStateBegan";
+    IDDiagnostics[@"collapseSignal"] = @"explicit primary-slider forUserGesture presentation or recognizer Began; never owner appearance";
 }
 
 
