@@ -12,6 +12,7 @@
     [digest layoutIfNeeded];
     digest.retainedLayoutReady = [digest expandedCardsLayoutReady];
     self.collapseState = IDPanelToggle(self.collapseState);
+    if (IDPresentationCycle.live) IDPresentationCycle.compact = IDPanelCompact(self.collapseState);
     BOOL reduceMotion = UIAccessibilityIsReduceMotionEnabled();
     [digest updateCollapsePresentation];
     // Start alpha from the old representation; geometry changes once inside animator.

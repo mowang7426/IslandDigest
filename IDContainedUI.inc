@@ -8,6 +8,7 @@
     // Removing hundreds of active constraints during an interactive dismissal is avoidable.
     for (UIView *view in self.cardStack.arrangedSubviews) {
         IDContainedClearView(view);
+        objc_setAssociatedObject(view, &IDStableCardModelKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if ([view isKindOfClass:IDCardView.class]) ((IDCardView *)view).openAction = nil;
         view.accessibilityCustomActions = nil;
     }
@@ -44,12 +45,28 @@
 - (void)showCards {
     self.previousPageButton = nil; self.nextPageButton = nil;
     CGPoint previousOffset = self.cardScroll.contentOffset;
-    [self dropCards];
-    for (UIView *view in self.cardStack.arrangedSubviews.copy) {
-        [self.cardStack removeArrangedSubview:view]; [view removeFromSuperview];
+    NSArray<UIView *> *previousViews = self.cardStack.arrangedSubviews.copy;
+    UIView *scrollAnchor = nil;
+    CGFloat anchorViewportY = 0;
+    for (UIView *view in previousViews) {
+        if (![view isKindOfClass:IDCardView.class]) continue;
+        CGRect frame = [view convertRect:view.bounds toView:self.cardScroll];
+        if (CGRectIntersectsRect(frame, self.cardScroll.bounds)) {
+            scrollAnchor = view; anchorViewportY = CGRectGetMinY(frame) - previousOffset.y; break;
+        }
     }
+    NSMutableArray<UIView *> *desiredViews = [NSMutableArray new];
+    NSMutableDictionary<NSValue *, IDCardView *> *previousCards = [NSMutableDictionary new];
+    for (UIView *view in previousViews) {
+        NSDictionary *model = objc_getAssociatedObject(view, &IDStableCardModelKey);
+        if ([view isKindOfClass:IDCardView.class] && model[@"request"])
+            previousCards[[NSValue valueWithNonretainedObject:model[@"request"]]] = (IDCardView *)view;
+    }
+    self.cardTap.enabled = NO; self.cardTap.enabled = YES;
+    self.retainedLayoutReady = NO;
+    self.nativeLayoutSignatureValid = NO;
     self.cardScroll.hidden = !IDContainedMode; self.cardNotice.hidden = !IDContainedMode;
-    if (!IDContainedMode) return;
+    if (!IDContainedMode) { [self dropCards]; return; }
     IDCoordinator *state = self.coordinator;
     NSUInteger rendered = 0;
     for (IDGroup *group in state.groups) {
@@ -59,8 +76,14 @@
         if (!cards.count) continue;
         UILabel *heading = [self cardLabel:group.name style:UIFontTextStyleHeadline color:UIColor.labelColor];
         heading.accessibilityTraits = UIAccessibilityTraitHeader;
-        [self.cardStack addArrangedSubview:heading];
+        [desiredViews addObject:heading];
         for (NSDictionary *card in cards) {
+            IDCardView *retained = card[@"request"] ? previousCards[[NSValue valueWithNonretainedObject:card[@"request"]]] : nil;
+            NSDictionary *oldModel = retained ? objc_getAssociatedObject(retained, &IDStableCardModelKey) : nil;
+            NSNumber *revision = retained ? objc_getAssociatedObject(retained, &IDStableCardRevisionKey) : nil;
+            if (IDStableReuseView(retained != nil, [oldModel isEqual:card], revision.unsignedIntegerValue == IDOptionsRevision, oldModel == nil)) {
+                [desiredViews addObject:retained]; rendered++; continue;
+            }
             IDCardView *shell = [IDCardView new]; shell.layer.cornerRadius = 16;
             shell.userInteractionEnabled = YES;
             shell.translatesAutoresizingMaskIntoConstraints = NO;
@@ -118,20 +141,22 @@
                 return [weakShell accessibilityActivate];
             }];
             shell.accessibilityCustomActions = @[openAction];
-            [self.cardStack addArrangedSubview:shell]; rendered++;
+            objc_setAssociatedObject(shell, &IDStableCardModelKey, card, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(shell, &IDStableCardRevisionKey, @(IDOptionsRevision), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [desiredViews addObject:shell]; rendered++;
         }
     }
     if (!rendered) {
         NSString *empty = state.enumerationCursor ? @"通知读取中；原生列表保留" :
             state.enumerationReliable ? @"当前范围暂无通知" : @"通知读取未完成；请使用原生列表";
-        [self.cardStack addArrangedSubview:[self cardLabel:empty style:UIFontTextStyleBody color:UIColor.secondaryLabelColor]];
+        [desiredViews addObject:[self cardLabel:empty style:UIFontTextStyleBody color:UIColor.secondaryLabelColor]];
     }
     if (state.selectedRequestCount > IDContainedLimit) {
         NSUInteger pages = IDContainedPageCount(state.selectedRequestCount);
         UILabel *page = [self cardLabel:[NSString stringWithFormat:@"第 %lu / %lu 页 · 当前范围共 %lu 条；较早通知可翻页访问",
             (unsigned long)(state.cardPage + 1), (unsigned long)pages, (unsigned long)state.selectedRequestCount]
             style:UIFontTextStyleFootnote color:UIColor.secondaryLabelColor];
-        [self.cardStack addArrangedSubview:page];
+        [desiredViews addObject:page];
         self.previousPageButton = [UIButton buttonWithType:UIButtonTypeSystem];
         self.nextPageButton = [UIButton buttonWithType:UIButtonTypeSystem];
         [self.previousPageButton setTitle:@"上一页（较新）" forState:UIControlStateNormal];
@@ -143,9 +168,25 @@
         for (UIButton *button in @[self.previousPageButton, self.nextPageButton]) {
             button.translatesAutoresizingMaskIntoConstraints = NO;
             [button.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
-            [self.cardStack addArrangedSubview:button];
+            [desiredViews addObject:button];
         }
     }
+    // Remove only deleted/changed shells; unchanged cards stay mounted and keep
+    // their action identity. Scrub discarded content before releasing it.
+    NSSet *desiredSet = [NSSet setWithArray:desiredViews];
+    for (UIView *view in previousViews) if (![desiredSet containsObject:view]) {
+        IDContainedClearView(view);
+        objc_setAssociatedObject(view, &IDStableCardModelKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if ([view isKindOfClass:IDCardView.class]) ((IDCardView *)view).openAction = nil;
+        view.accessibilityCustomActions = nil;
+        [self.cardStack removeArrangedSubview:view]; [view removeFromSuperview];
+    }
+    [desiredViews enumerateObjectsUsingBlock:^(UIView *view, NSUInteger index, BOOL *stop) {
+        NSArray *current = self.cardStack.arrangedSubviews;
+        if (index < current.count && current[index] == view) return;
+        if ([current containsObject:view]) [self.cardStack removeArrangedSubview:view];
+        [self.cardStack insertArrangedSubview:view atIndex:index];
+    }];
     NSUInteger redacted = 0;
     for (NSDictionary *card in state.cards) if ([card[@"redacted"] boolValue]) redacted++;
     NSString *policyNote = redacted ? @"系统策略未确认或设备未满足条件，部分内容已隐藏" : @"仅在解锁且受保护数据可用时预览；无法核验每 App 的 Never 映射";
@@ -157,7 +198,9 @@
     [self setNeedsLayout];
     [self layoutIfNeeded];
     CGFloat maximum = MAX(0, self.cardScroll.contentSize.height - self.cardScroll.bounds.size.height);
-    self.cardScroll.contentOffset = CGPointMake(0, MIN(MAX(0, previousOffset.y), maximum));
+    BOOL hasAnchor = scrollAnchor && [desiredSet containsObject:scrollAnchor];
+    CGFloat anchorY = hasAnchor ? CGRectGetMinY([scrollAnchor convertRect:scrollAnchor.bounds toView:self.cardScroll]) : 0;
+    self.cardScroll.contentOffset = CGPointMake(0, IDStableScrollOffset(previousOffset.y, hasAnchor, anchorY, anchorViewportY, maximum));
     // One coalesced next-run-loop verdict after descendant Auto Layout. The existing
     // presentation generation cancels stale callbacks on teardown; never enumerate.
     [self.coordinator scheduleNativeListVisibility];

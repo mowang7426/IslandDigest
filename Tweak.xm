@@ -20,6 +20,10 @@
 #import "IDPerformanceLogic.h"
 #import "IDFirstFrameHandoff.h"
 #import "IDSnapshotLogic.h"
+#import "IDStableRefreshLogic.h"
+static char IDStableCardModelKey, IDStableCardRevisionKey, IDStableGroupSignatureKey;
+static BOOL IDCollapseOnPresentation = NO;
+static IDStablePresentation IDPresentationCycle;
 static BOOL IDPerformanceDiagnostics = NO, IDGradientText = NO, IDTextShadow = NO;
 static NSString *IDTextPalette = @"cyanPurple", *IDSolidText = @"label";
 static double IDMonotonic(void) {
@@ -53,7 +57,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.13";
+    IDDiagnostics[@"version"] = @"0.3.14";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -86,6 +90,7 @@ static void IDLoadOptions(void) {
     IDGridColumns = [columns isEqualToString:@"two"] ? 2 : [columns isEqualToString:@"auto"] ? 0 : 3;
     IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
+    IDCollapseOnPresentation = IDPref(@"CollapseOnPresentation", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
     IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
     IDAlwaysHideNative = IDPref(@"AlwaysHideNativeList", NO) && IDHideNative;
@@ -157,7 +162,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.13.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.14.startup-pending";
 #endif
 }
 
@@ -514,7 +519,14 @@ static void IDModelDidChange(void) {
     IDModelRevision++;
     for (id owner in IDOwners.allObjects) {
         IDCoordinator *state = IDState(owner);
-        state.snapshotRetries = 0; [state dropContainedContent];
+        state.snapshotRetries = 0;
+        // Mutation invalidates the reader, not the currently visible representation.
+        // Privacy events still synchronously scrub through IDRedactContainedNow.
+        BOOL mustScrub = NO;
+        if (!UIApplication.sharedApplication.protectedDataAvailable || !IDContainedAuthenticated(state.owner))
+            for (NSDictionary *card in state.renderedCards) if (![card[@"redacted"] boolValue]) { mustScrub = YES; break; }
+        if (state.active && !mustScrub) [state cancelSnapshot];
+        else [state dropContainedContent];
     }
 }
 
@@ -724,6 +736,8 @@ static BOOL IDSupplementaryReady(id owner) {
         dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf continueSnapshot:generation]; });
     }
     NSUInteger page = self.cardPage, selectedCount = 0;
+    // A pending asynchronous read is not an empty committed snapshot.
+    if (!self.snapshotGroups) return self.groups ?: @[];
     NSArray *requests = IDNotificationPageRequests(self.snapshotRequests, self.snapshotByApp,
         self.selected, &page, &selectedCount);
     self.cardPage = page; self.selectedRequestCount = selectedCount;
@@ -913,6 +927,10 @@ static BOOL IDSupplementaryReady(id owner) {
     double started = IDMonotonic();
     self.geometryCacheValid = NO;
     if (IDPanelTransitioning(self.collapseState)) { self.renderAfterCollapse = YES; return; }
+    if (!IDContainedMode || !self.overlay) self.collapseState = IDPanelExpanded;
+    else if (IDCollapseOnPresentation && IDPresentationCycle.live)
+        self.collapseState = IDStablePresentationState(IDPresentationCycle, YES);
+    [(IDDigestView *)self.panel.view updateCollapsePresentation];
     // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
     [(IDDigestView *)self.panel.view showCards];
@@ -976,8 +994,9 @@ static BOOL IDSupplementaryReady(id owner) {
 }
 
 - (void)beginAppearance {
-    self.snapshotRetries = 0; self.cardPage = 0;
     if (self.active) return;
+    self.collapseState = IDStablePresentationState(IDPresentationCycle, IDCollapseOnPresentation && IDContainedMode);
+    self.snapshotRetries = 0; self.cardPage = 0;
     self.dismissed = NO;
     self.active = YES;
     // The lifecycle owner is authoritative before the async refresh selector.
@@ -1136,6 +1155,10 @@ static BOOL IDSupplementaryReady(id owner) {
         if (snapshotPending) {
             IDDiagnostics[@"enumerationComplete"] = @NO;
             IDStatus(@"reading-notifications", @"通知读取中；原生列表保留，尚未确认空列表");
+            if (IDStableRetainWhilePending(YES, self.inserted, self.renderedCards == nil)) {
+                [self updateNativeListVisibility];
+                return; // Do not reset selection, pagination, scroll or rendered shells.
+            }
         }
         BOOL unchanged = !snapshotPending && self.groups.count == groups.count && [self.cards isEqual:self.renderedCards];
         BOOL selectionExists = !self.selected;
@@ -1281,6 +1304,15 @@ static BOOL IDOpenFeedback(NSString *message) {
     if (!NSThread.isMainThread || !request || !self.owner.view.window || self.owner.view.hidden
         || self.owner.view.window.hidden || !UIApplication.sharedApplication.protectedDataAvailable) {
         IDOpenFeedback(@"打开诊断：点击已收到；系统上下文不可用");
+        return NO;
+    }
+    // Retained UI may outlive a snapshot during an incremental read. Never send
+    // an action for a removed/replaced request or from an obsolete generation.
+    if (!self.active || self.disabled || !self.snapshotGroups || !self.snapshotRequests || !self.enumerationReliable
+        || self.snapshotModelRevision != IDModelRevision
+        || self.snapshotOptionsRevision != IDOptionsRevision
+        || [self.snapshotRequests indexOfObjectIdenticalTo:request] == NSNotFound) {
+        IDOpenFeedback(@"打开诊断：通知正在更新或已失效，请稍后重试");
         return NO;
     }
     IDOpenFeedback(@"打开诊断：点击已收到；正在检查原生动作");
@@ -1498,6 +1530,38 @@ static BOOL IDOpenFeedback(NSString *message) {
 %end
 %end
 
+%group IDPresentationEvents
+%hook SBCoverSheetPresentationManager
+- (void)coverSheetSlidingViewControllerUserPresentGestureBegan:(id)controller {
+    // Runtime-header explicit USER gesture, not generic setPresented/viewWillAppear.
+    BOOL presented = YES;
+    if (NSThread.isMainThread && IDClearBool(self, "isPresented", &presented)
+        && IDStableBeginPresentation(&IDPresentationCycle, YES, presented,
+            IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation)) {
+        for (id owner in IDOwners.allObjects) {
+            IDCoordinator *state = IDState(owner);
+            if (state.active && state.overlay) { [state cancelCollapse]; [state render]; }
+        }
+    }
+    %orig;
+}
+- (void)coverSheetSlidingViewControllerCleanupDismissalTransition:(id)controller {
+    IDStableEndPresentation(&IDPresentationCycle);
+    %orig;
+}
+- (void)coverSheetSlidingViewControllerDidEndTransition:(id)controller {
+    %orig;
+    BOOL presented = YES;
+    if (IDClearBool(self, "isPresented", &presented) && !presented)
+        IDStableEndPresentation(&IDPresentationCycle); // Includes a cancelled pull.
+}
+- (void)noteScreenDidTurnOff {
+    IDStableEndPresentation(&IDPresentationCycle);
+    %orig;
+}
+%end
+%end
+
 // Do not hook a superclass implementation or install missing method stubs.
 static BOOL IDOwnObjectEvent(Class target, const char *name) {
     if (!target || !IDMethod(target, name, "v", 3)) return NO;
@@ -1552,6 +1616,14 @@ static void IDInstallHooks(void) {
         %init(IDFilter);
     }
     %init(IDMain);
+    Class presentation = objc_getClass("SBCoverSheetPresentationManager");
+    BOOL presentationEvents = IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerUserPresentGestureBegan:")
+        && IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerCleanupDismissalTransition:")
+        && IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerDidEndTransition:")
+        && IDMethod(presentation, "noteScreenDidTurnOff", "v", 2)
+        && IDMethod(presentation, "isPresented", "B", 2);
+    if (presentationEvents) { %init(IDPresentationEvents); }
+    IDDiagnostics[@"presentationGestureSupported"] = @(presentationEvents);
     Class nativeListClass = objc_getClass("NCNotificationListView");
     BOOL nativeVisibilityHooks = nativeListClass && [nativeListClass isSubclassOfClass:UIView.class]
         && IDMethod(nativeListClass, "setHidden:", "v", 3)
@@ -1579,6 +1651,8 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
                                 const void *object, CFDictionaryRef userInfo) {
     dispatch_async(dispatch_get_main_queue(), ^{
         IDLoadOptions();
+        if (!IDCollapseOnPresentation || !IDContainedMode || !IDEnabled || !IDGrouping)
+            IDStableEndPresentation(&IDPresentationCycle);
         BOOL retry = CFEqual(name, CFSTR("com.local.islanddigest/retry"));
         if (retry && !IDHooksInstalled) {
             unlink(IDStartupMarkerPath()); // Explicit user recovery, not an automatic guard bypass.
@@ -1587,7 +1661,7 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
             [state cancelClear]; state.clearMessage = nil;
-            if (!IDContainedMode || !IDEnabled || !IDGrouping || !state.active) [state dropContainedContent];
+            if (!IDPreviewWhenUnlocked || !IDContainedMode || !IDEnabled || !IDGrouping || !state.active) [state dropContainedContent];
             if (!IDHideNative) [state restoreNativeList];
             if (retry) {
                 state.recoveryAttempts = 0;

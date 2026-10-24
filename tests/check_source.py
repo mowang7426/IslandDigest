@@ -21,7 +21,7 @@ assert 'hooks-installed' in tweak and 'panel-visible' in tweak and 'owner-observ
 entry = plistlib.loads((root/'layout/Library/PreferenceLoader/Preferences/IslandDigest.plist').read_bytes())['entry']
 info = plistlib.loads((root/'prefs/Resources/Info.plist').read_bytes())
 assert entry['detail'] == info['NSPrincipalClass'] == 'IDPrefsController'
-assert info['CFBundleVersion'] == '0.3.13'
+assert info['CFBundleVersion'] == '0.3.14'
 ui_contained = (root / 'IDContainedUI.inc').read_text()
 assert 'IDCardView *shell = [IDCardView new]' in ui_contained
 assert 'shell.userInteractionEnabled = YES' in ui_contained
@@ -81,7 +81,7 @@ assert '[self.previousPageButton addTarget:state action:@selector(previousCardPa
 assert '[self.nextPageButton addTarget:state action:@selector(nextCardPage)' in ui_contained
 assert 'shell.openAction = ^{' in ui_contained
 assert 'CGPoint previousOffset = self.cardScroll.contentOffset' in ui_contained
-assert 'MIN(MAX(0, previousOffset.y), maximum)' in ui_contained
+assert 'IDStableScrollOffset(previousOffset.y, hasAnchor, anchorY, anchorViewportY, maximum)' in ui_contained
 assert 'IDCardCoverageUsable(self.cardScroll.contentSize.height, CGRectGetMaxY(self.cardStack.frame))' in ui_contained
 assert 'self.cardTap.enabled = NO; self.cardTap.enabled = YES' in ui_contained
 for key in ('cardsContentHeight', 'cardsViewportHeight', 'cardsStackHeight', 'cardsScrollEnabled'):
@@ -136,7 +136,7 @@ assert 'IDClearCancel(&_clearGate)' in clear and '[state cancelClear]' in tweak
 assert '#include "../IDClearLogic.h"' in (root/'tests/Clear.c').read_text()
 print('PASS clear source guardrails (not native behavior validation)')
 
-# 0.3.13: actual UIKit constraints, paired with the shared geometry C tests.
+# 0.3.14: actual UIKit constraints, paired with the shared geometry C tests.
 assert 'IDExperienceCategoryGeometry([self rowHeight], IDMiniControls)' in ui
 for contract in (
     'tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO',
@@ -153,10 +153,10 @@ for contract in (
 assert 'content.leadingAnchor constraintEqualToAnchor:button.leadingAnchor' not in ui
 assert 'content.trailingAnchor constraintEqualToAnchor:button.trailingAnchor' not in ui
 assert 'if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption' in prefs
-assert info['CFBundleShortVersionString'] == '0.3.13'
-assert 'Version: 0.3.13' in (root/'control').read_text()
-assert "'0.3.13', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
-assert 'IslandDigest-0.3.13.startup-pending' in tweak
+assert info['CFBundleShortVersionString'] == '0.3.14'
+assert 'Version: 0.3.14' in (root/'control').read_text()
+assert "'0.3.14', '${{ matrix.scheme }}'" in (root/'.github/workflows/build.yml').read_text()
+assert 'IslandDigest-0.3.14.startup-pending' in tweak
 # The real coordinator, not just the adapter, must leave a pending cursor intact.
 caller = tweak.split('- (void)continueSnapshot:(NSUInteger)generation {', 1)[1].split('- (void)finishSnapshot {', 1)[0]
 pending = caller.split('if (action == IDSnapshotPending) {', 1)[1].split('if (action != IDSnapshotSort) return;', 1)[0]
@@ -165,4 +165,4 @@ assert 'self.snapshotSorting = YES;' in caller and 'state.enumerationCursor = ni
 assert caller.index('return;\n    }\n    if (action != IDSnapshotSort)') < caller.index('NSArray *records = [self.buildRecords copy]')
 assert 'tests/Snapshot.c' in (root/'.github/workflows/build.yml').read_text()
 print('PASS coordinator pending continuation returns before sorting/commit; production state gate is CI-tested')
-print('PASS 0.3.13 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')
+print('PASS 0.3.14 inset visual tile, bounded intrinsic centered group, full count/pin space, 44pt hit area and versions')

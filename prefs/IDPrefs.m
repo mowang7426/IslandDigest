@@ -85,7 +85,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 - (PSSpecifier *)toggle:(NSString *)title key:(NSString *)key {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:self set:@selector(setValue:specifier:) get:@selector(valueForSpecifier:) detail:Nil cell:PSSwitchCell edit:Nil];
     [item setProperty:key forKey:@"key"];
-    [item setProperty:@(!([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])) forKey:@"default"];
+    [item setProperty:@(!([key isEqualToString:@"CollapseOnPresentation"] || [key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])) forKey:@"default"];
     return item;
 }
 - (PSSpecifier *)choice:(NSString *)title key:(NSString *)key values:(NSArray *)values titles:(NSArray *)titles {
@@ -119,7 +119,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"three");
     if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption(key, @[@"mini", @"standard"], @"mini");
     if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
-    return @(IDPref(key, !([key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])));
+    return @(IDPref(key, !([key isEqualToString:@"CollapseOnPresentation"] || [key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
@@ -153,7 +153,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     if ([status[ @"alwaysHideActive"] boolValue]) [lines addObject:@"高风险始终隐藏已激活：若面板空白，关闭始终隐藏与隐藏原生列表后重新打开通知中心恢复。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"effectiveEnabled", @"effectiveGrouping", @"currentPrefEnabled", @"currentPrefGrouping", @"lastActiveReadCompletion", @"lastActiveReadCancelReason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"masterEventHooks", @"enumerationVisits", @"enumerationSlices", @"enumerationCaptured", @"selectedRequests", @"cardPage", @"cardPages", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"effectiveEnabled", @"effectiveGrouping", @"currentPrefEnabled", @"currentPrefGrouping", @"lastActiveReadCompletion", @"lastActiveReadCancelReason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"presentationGestureSupported", @"masterEventHooks", @"enumerationVisits", @"enumerationSlices", @"enumerationCaptured", @"selectedRequests", @"cardPage", @"cardPages", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     // The saved active verdict survives an inactive teardown sample. Whitelist
     // nested scalars too: never display arbitrary diagnostic dictionary content.
@@ -172,13 +172,17 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.13 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.14 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];
     [items addObject:[self toggle:@"解锁时显示通知预览（默认关闭）" key:@"AllowPreviewWhenUnlocked"]];
     [items addObject:[self group:@"插件内通知卡片（实验性）" footer:@"仅当设备已解锁、受保护数据可用、拥有者界面可见且本开关开启时读取原生 title/subtitle/message。iOS 17 私有 contentPreviewSetting 的整型值缺少可核验枚举映射，因此不猜值；默认关闭，只有你明确开启后才允许解锁预览。该开关可能无法保持每个 App 的“永不显示预览”语义，请仅在理解风险时开启；锁屏仍始终隐藏。锁定时不读取正文，锁定通知到达即同步清空已显示卡片。最多 160 条。原生列表默认保留。隐藏开关仅在插件内模式开启时可用，接口不匹配或布局不可用时保留原生。始终隐藏是高风险选项：打开通知中心前，只要当前宿主已提供精确原生列表就立即隐藏，不等待卡片、完整枚举或布局；插件故障时可能出现空白，按诊断页恢复。"]];
     [items addObject:[self toggle:@"插件内显示通知卡片" key:@"ContainedMode"]];
+    [items addObject:[self group:@"下拉展示策略" footer:@"默认关闭，仅插件内通知卡片覆盖层有效。开启后，经系统明确的用户下拉展示事件确认才先显示胶囊，点击胶囊展开；同次展示新增通知不会重新折叠或自动展开。锁屏唤醒和控制器重建不当作新下拉。系统接口缺失、ABI 不符、已展示或未确认手势时不自动折叠；不支持的 supplementary 面板保持展开。诊断 presentationGestureSupported 仅表示接口门控通过，不代表真机验收。"]];
+    PSSpecifier *collapse = [self toggle:@"每次下拉先折叠" key:@"CollapseOnPresentation"];
+    [collapse setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
+    [items addObject:collapse];
     PSSpecifier *hide = [self toggle:@"隐藏原生通知列表（默认关闭）" key:@"HideNativeList"];
     [hide setProperty:@(IDPref(@"ContainedMode", YES)) forKey:@"enabled"];
     [items addObject:hide];

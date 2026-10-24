@@ -246,7 +246,13 @@
 }
 - (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected {
     CGPoint offset = self.scroll.contentOffset;
-    for (UIView *view in self.stack.subviews.copy) [view removeFromSuperview];
+    NSArray<UIView *> *previousButtons = self.stack.subviews.copy;
+    NSMutableDictionary *retainedButtons = [NSMutableDictionary new];
+    NSMutableSet *usedButtons = [NSMutableSet new];
+    for (UIView *view in previousButtons) {
+        NSArray *signature = objc_getAssociatedObject(view, &IDStableGroupSignatureKey);
+        if (signature.count) retainedButtons[signature[0]] = view;
+    }
     NSUInteger total = 0; for (IDGroup *group in groups) total += group.count;
     NSString *compactCount = total > 999 ? @"999+" : [NSString stringWithFormat:@"%lu", (unsigned long)total];
     NSString *capsuleTitle = [@"  " stringByAppendingString:compactCount];
@@ -268,7 +274,14 @@
         IDGroup *group = entry == NSNull.null ? nil : entry;
         BOOL active = group ? [selected isEqualToString:group.identifier] : !selected;
         BOOL pinned = group && [pins containsObject:group.identifier];
+        NSArray *signature = @[group.identifier ?: @"", group.name ?: @"全部", @(group ? group.count : total),
+            @(active), @(pinned), @(IDOptionsRevision), group.icon ?: NSNull.null];
+        UIButton *retained = retainedButtons[signature[0]];
+        if ([objc_getAssociatedObject(retained, &IDStableGroupSignatureKey) isEqual:signature]) {
+            [usedButtons addObject:retained]; [self.stack bringSubviewToFront:retained]; continue;
+        }
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        objc_setAssociatedObject(button, &IDStableGroupSignatureKey, signature, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         IDCategoryGeometry geometry = IDExperienceCategoryGeometry([self rowHeight], IDMiniControls);
         button.backgroundColor = UIColor.clearColor;
         UIView *tile = [UIView new]; tile.translatesAutoresizingMaskIntoConstraints = NO;
@@ -335,7 +348,9 @@
             button.accessibilityCustomActions = @[pinAction];
         }
         [self.stack addSubview:button];
+        [usedButtons addObject:button];
     }
+    for (UIView *view in previousButtons) if (![usedButtons containsObject:view]) [view removeFromSuperview];
     [self.coordinator updateClearButton];
     [self invalidateIntrinsicContentSize]; [self setNeedsLayout]; [self layoutIfNeeded];
     self.scroll.contentOffset = CGPointMake(MIN(MAX(0, offset.x), MAX(0, self.scroll.contentSize.width - self.scroll.bounds.size.width)), MIN(MAX(0, offset.y), MAX(0, self.scroll.contentSize.height - self.scroll.bounds.size.height)));

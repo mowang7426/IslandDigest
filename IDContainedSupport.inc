@@ -12,11 +12,22 @@
  * controller is visible (the authenticated/unlocked state). No body is read
  * while locked or when protected data is unavailable.
  */
+static BOOL IDContainedAuthenticated(UIViewController *owner) {
+    Class cover = objc_getClass("CSCoverSheetViewController");
+    UIViewController *node = owner;
+    for (NSUInteger depth = 0; node && depth < 16; depth++, node = node.parentViewController) {
+        BOOL authenticated = NO;
+        if (cover && [node isKindOfClass:cover])
+            return IDClearBool(node, "isAuthenticated", &authenticated) && authenticated;
+    }
+    return NO; // protectedDataAvailable alone is not proof of current unlock.
+}
 static NSString *IDContainedPreviewReason(id request, UIViewController *owner) {
     if (!IDPreviewWhenUnlocked) return @"preview-opt-in-disabled";
     if (!NSThread.isMainThread) return @"not-main-thread";
     UIApplication *application = UIApplication.sharedApplication;
     if (!application.protectedDataAvailable) return @"protected-data-unavailable";
+    if (!IDContainedAuthenticated(owner)) return @"authentication-unconfirmed";
     if (application.applicationState == UIApplicationStateBackground) return @"application-background";
     if (!owner || !owner.view.window || owner.view.hidden || owner.view.window.hidden) return @"owner-not-visible";
     id content = IDRead(request, "content");

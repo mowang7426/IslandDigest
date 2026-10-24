@@ -174,6 +174,7 @@
     // Release retained native references too.
     [self restoreNativeList]; // Restore native access before any potentially large privacy walk.
     self.cards = @[];
+    self.pendingActionRequest = nil; self.pendingAction = nil;
     self.renderedCards = nil;
     if (self.panel.isViewLoaded) [(IDDigestView *)self.panel.view dropCards];
 }
