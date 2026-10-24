@@ -106,6 +106,7 @@
         : shouldHide ? @"已隐藏原生列表；未删除任何通知"
         : @"面板不可见或无卡片；保留原生列表";
     IDDiagnostics[@"nativeHideReason"] = self.nativeHideReason;
+    [self recordFirstFrameHandoff];
     IDDiagnostics[@"previewPolicyReason"] = IDPreviewWhenUnlocked
         ? @"contentPreviewSetting-unmapped; explicit-default-off-unlocked-opt-in; per-app Never cannot be verified"
         : @"user-disabled; fail-closed";
@@ -147,7 +148,9 @@
     } @finally { self.nativeVisibilityUpdating = NO; }
 }
 - (void)dropContainedContent {
-    [self cancelSnapshot]; // Cancel pending slices and release retained native references too.
+    [self cancelSnapshot]; // Cancel pending slices
+    if (!UIApplication.sharedApplication.protectedDataAvailable) [self invalidateFirstFrameHandoff];
+    // Release retained native references too.
     [self restoreNativeList]; // Restore native access before any potentially large privacy walk.
     self.cards = @[];
     self.renderedCards = nil;

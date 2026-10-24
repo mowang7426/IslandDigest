@@ -18,6 +18,7 @@
 #import "IDScrollLogic.h"
 #import "IDCollapseLogic.h"
 #import "IDPerformanceLogic.h"
+#import "IDFirstFrameHandoff.h"
 #import "IDSnapshotLogic.h"
 static BOOL IDPerformanceDiagnostics = NO, IDGradientText = NO, IDTextShadow = NO;
 static NSString *IDTextPalette = @"cyanPurple", *IDSolidText = @"label";
@@ -52,7 +53,7 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.11";
+    IDDiagnostics[@"version"] = @"0.3.12";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
@@ -155,7 +156,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.11.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.12.startup-pending";
 #endif
 }
 
@@ -348,6 +349,18 @@ static NSArray *IDItems(id object) {
 @property(nonatomic) BOOL nativeVisibilityPending;
 @property(nonatomic) BOOL nativeVisibilityUpdating;
 @property(nonatomic, weak) UIView *observedNativeList;
+/* Warm handoff contains geometry/count only; notification bodies never persist. */
+@property(nonatomic) BOOL firstFrameHandoffCacheValid;
+@property(nonatomic) NSUInteger firstFrameHandoffCards, firstFrameHandoffModelRevision, firstFrameHandoffOptionsRevision;
+@property(nonatomic) double firstFrameHandoffCachedAt;
+@property(nonatomic, weak) UIWindow *firstFrameHandoffWindow;
+@property(nonatomic, weak) UIView *firstFrameHandoffShell;
+@property(nonatomic) NSUInteger firstFrameHandoffGeneration;
+@property(nonatomic) BOOL firstFrameHandoffPending;
+- (void)tryFirstFrameHandoff;
+- (void)invalidateFirstFrameHandoff;
+- (void)recordFirstFrameHandoff;
+- (void)scrubFirstFrameHandoff;
 - (void)scheduleNativeListVisibility;
 @property(nonatomic, copy) NSString *nativeHideReason;
 - (void)restoreNativeList;
@@ -774,7 +787,69 @@ static BOOL IDSupplementaryReady(id owner) {
     return IDPerformanceWorkAllowed(self.active, self.disabled, self.owner.isViewLoaded,
         self.owner.viewIfLoaded.window != nil, self.owner.viewIfLoaded.hidden || self.owner.viewIfLoaded.window.hidden);
 }
+- (void)invalidateFirstFrameHandoff {
+    self.firstFrameHandoffCacheValid = NO;
+    self.firstFrameHandoffCards = 0;
+    self.firstFrameHandoffShell = nil;
+    IDDiagnostics[@"firstFrameHandoffCacheValid"] = @NO;
+}
+- (void)recordFirstFrameHandoff {
+    IDDigestView *digest = self.panel.isViewLoaded ? (IDDigestView *)self.panel.view : nil;
+    if (!digest || !self.hiddenNativeList || !self.hiddenNativeList.hidden || !self.cards.count) return;
+    self.firstFrameHandoffCacheValid = YES;
+    self.firstFrameHandoffCards = self.cards.count;
+    self.firstFrameHandoffCachedAt = IDMonotonic();
+    self.firstFrameHandoffModelRevision = IDModelRevision;
+    self.firstFrameHandoffOptionsRevision = IDOptionsRevision;
+    self.firstFrameHandoffWindow = self.owner.viewIfLoaded.window;
+    self.firstFrameHandoffShell = digest.cardStack;
+    IDDiagnostics[@"firstFrameHandoffCacheValid"] = @YES;
+    IDDiagnostics[@"firstFrameHandoffCacheAgeMs"] = @0;
+}
+- (void)scrubFirstFrameHandoff {
+    if (!self.firstFrameHandoffCacheValid || !self.panel.isViewLoaded) return;
+    IDDigestView *digest = (IDDigestView *)self.panel.view;
+    /* dropCards already clears every label/action. Re-expose only the retained,
+       redacted shell; no notification body or identifier is retained. */
+    [digest dropCards];
+    digest.cardScroll.hidden = NO;
+    digest.cardNotice.hidden = NO;
+    digest.cardNotice.text = @"通知卡片正在刷新；内容已按隐私策略隐藏";
+}
+- (void)tryFirstFrameHandoff {
+    if (!NSThread.isMainThread || !IDHideNative || !IDContainedMode || !self.active
+        || !UIApplication.sharedApplication.protectedDataAvailable || self.disabled) return;
+    UIView *shell = self.firstFrameHandoffShell;
+    UIView *candidate = [IDRead(self.owner, "masterListView") isKindOfClass:UIView.class] ? IDRead(self.owner, "masterListView") : nil;
+    IDFirstFrameHandoffInput input = {
+        .valid = self.firstFrameHandoffCacheValid,
+        .protectedData = UIApplication.sharedApplication.protectedDataAvailable,
+        .ownerMatch = self.firstFrameHandoffWindow == self.owner.viewIfLoaded.window,
+        .windowMatch = candidate.window == self.owner.viewIfLoaded.window,
+        .settingsMatch = self.firstFrameHandoffOptionsRevision == IDOptionsRevision,
+        .modelMatch = self.firstFrameHandoffModelRevision == IDModelRevision,
+        .shellReachable = shell && shell.window == self.owner.viewIfLoaded.window,
+        .shellVisible = self.panel.isViewLoaded && !self.panel.view.hidden && self.panel.view.window,
+        .candidateSupported = candidate && [candidate isKindOfClass:objc_getClass("NCNotificationListView")],
+        .candidateUnclaimed = candidate && (!objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey) || objc_getAssociatedObject(candidate, &IDNativeHideOwnerKey) == self.nativeHideToken),
+        .cachedCards = self.firstFrameHandoffCards,
+        .ageMs = (uint64_t)MAX(0, (IDMonotonic() - self.firstFrameHandoffCachedAt) * 1000)
+    };
+    IDDiagnostics[@"firstFrameHandoffCacheAgeMs"] = @(input.ageMs);
+    if (!IDFirstFrameHandoffSafe(&input)) { IDDiagnostics[@"firstFrameHandoff"] = @"cold-fallback"; return; }
+    if (self.hiddenNativeList && self.hiddenNativeList != candidate) [self restoreNativeList];
+    if (!self.hiddenNativeList) {
+        self.nativeWasHidden = candidate.hidden;
+        self.hiddenNativeList = candidate;
+        self.nativeHideToken = [IDNativeHideLease new]; self.nativeHideToken.coordinator = self;
+        objc_setAssociatedObject(candidate, &IDNativeHideOwnerKey, self.nativeHideToken, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    candidate.hidden = YES;
+    IDDiagnostics[@"firstFrameHandoff"] = @"warm-hidden";
+    IDDiagnostics[@"firstHideMs"] = @0;
+}
 - (void)scheduleNativeListVisibility {
+
     if (!IDContainedVisibilityEnqueue([self workAllowed], self.nativeVisibilityPending, self.nativeVisibilityUpdating)) return;
     self.nativeVisibilityPending = YES;
     NSUInteger generation = self.presentationGeneration;
@@ -872,6 +947,7 @@ static BOOL IDSupplementaryReady(id owner) {
     if (self.active) return;
     self.dismissed = NO;
     self.active = YES;
+    [self tryFirstFrameHandoff];
     self.appearanceEpoch = ++IDAppearanceEpoch;
     self.openingPending = YES;
     id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
@@ -1241,10 +1317,17 @@ static BOOL IDOpenFeedback(NSString *message) {
     IDEnsureState(self);
     IDLog("owner loaded; panel deferred");
 }
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    IDCoordinator *state = IDEnsureState(self);
+    [state beginAppearance];
+    [state tryFirstFrameHandoff];
+}
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     IDCoordinator *state = IDEnsureState(self);
     [state beginAppearance];
+    [state tryFirstFrameHandoff];
     IDLog("owner appeared");
     IDScheduleRefresh();
 }
