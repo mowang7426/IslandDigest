@@ -27,6 +27,9 @@ assert 'IDCollapseWillClear(@"preferences-disabled")' in t
 assert 'recordCollapseDiagnostic:@"directApply"' in t and 'recordCollapseDiagnostic:@"beginAppearance"' in t and 'recordCollapseDiagnostic:@"render"' in t
 assert 'capsule.bounds.size.height' in t and 'capsule.window != nil' in t and 'capsule.alpha' in t
 assert 'beforeExit' in t and 'lastConsumed' in t
+exit_body = t.split('- (void)endAppearance {')[1].split('- (void)togglePinnedIdentifier:')[0]
+assert exit_body.index('recordCollapseDiagnostic:') < exit_body.index('[self dropContainedContent]') < exit_body.index('IDStatus(')
+assert 'v[@"cycle"] ?: @0' in p
 assert p.index('折叠诊断摘要') < p.index('启用灵屿通知')
 assert 'collapseSummary' in p and '@"collapseHelperHook"' in p and '@"collapseIndirectHook"' in p
 assert '%hook UIGestureRecognizer' not in t and '%hook UIView\n' not in t

@@ -157,18 +157,21 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (![d isKindOfClass:NSDictionary.class]) return @"暂无 0.3.16 诊断：尚未加载新版本或状态文件不可读。";
     NSDictionary *r = d[@"raw"], *h = d[@"helper"], *i = d[@"indirect"];
     NSArray *states = r[@"states"];
-    NSDictionary *v = d[@"lastConsumed"];
+    NSDictionary *v = d[@"lastConsumed"] ?: d[@"renderSample"] ?: d[@"beginAppearanceSample"] ?: d[@"directApplySample"];
     NSString *fresh = [s[@"updated"] isKindOfClass:NSDate.class] && -[s[@"updated"] timeIntervalSinceNow] < 300 ? @"新鲜" : @"超过5分钟";
     return [NSString stringWithFormat:
-        @"版本 %@ / iOS %@ / PID %@（%@）\n开关 有效%@ 保存%@ 内置%@\n主入口 %@ 次，前%@→后%@，主线程%@\n状态 P/B/C/E/X/F：%@\nhelper %@ / indirect %@ / 事件#%@\n接受%@ 拒绝%@ / 周期%@ / 消费%@\n直用%@ 出现%@ 渲染%@ / 应用拥有者%@\n最后接受：%@ (#%@)\n最后拒绝：%@ (#%@)\n消费：%@ / %@ / owner%@\n胶囊 hidden%@ α%@ window%@ 高%@\n面板高%@ / 约束高%@\n清理：%@（此前 live%@ compact%@）",
+        @"版本 %@ / iOS %@ / PID %@（%@）\n钩子 主%@ 辅%@ 间%@\n开关 有效%@ 保存%@ 内置%@\n主入口 %@ 次，前%@→后%@，主线程%@\n状态 P/B/C/E/X/F：%@\nhelper %@ / indirect %@ / 事件#%@\n接受%@ 拒绝%@ / 周期%@ / 消费%@\n直用%@ 出现%@ 渲染%@ / 应用拥有者%@\n最后接受：%@ (#%@)\n最后拒绝：%@ (#%@)\n消费/检查：C%@ %@ / %@ / owner%@\n胶囊 hidden%@ α%@ window%@ 高%@\n面板高%@ / 约束高%@\n清理：%@（此前 live%@ compact%@）",
         s[@"version"], s[@"system"], s[@"pid"], fresh,
+        [s[@"collapseInputHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseInputHook"] ?: @"?",
+        [s[@"collapseHelperHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseHelperHook"] ?: @"?",
+        [s[@"collapseIndirectHook"] isEqual:@"supported"] ? @"✓" : s[@"collapseIndirectHook"] ?: @"?",
         s[@"effectiveCollapse"], s[@"currentPrefCollapse"], s[@"effectiveContained"],
         r[@"total"], r[@"pre"], r[@"post"], r[@"main"],
         states.count == 7 ? [[states subarrayWithRange:NSMakeRange(0, 6)] componentsJoinedByString:@"/"] : @"—",
         h[@"total"], i[@"total"], d[@"event"], d[@"accepted"], d[@"rejected"], d[@"cycle"], d[@"consumed"],
         d[@"directApply"], d[@"beginAppearance"], d[@"render"], d[@"directApplied"] ?: @0,
         d[@"lastAccept"], d[@"acceptEvent"] ?: @0, d[@"lastReject"], d[@"rejectEvent"] ?: @0,
-        v[@"stage"] ?: @"未消费", v[@"reason"] ?: d[@"directApplySample"][@"reason"] ?: @"—", v[@"owner"] ?: @0,
+        v[@"cycle"] ?: @0, v[@"stage"] ?: @"未消费", v[@"reason"] ?: d[@"directApplySample"][@"reason"] ?: @"—", v[@"owner"] ?: @0,
         v[@"hidden"] ?: @"—", v[@"alpha"] ?: @"—", v[@"window"] ?: @"—", v[@"height"] ?: @"—",
         v[@"panelHeight"] ?: @"—", v[@"constraintHeight"] ?: @"—",
         d[@"clearReason"], d[@"clearLive"] ?: @0, d[@"clearCompact"] ?: @0];
@@ -196,7 +199,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     }
     NSDictionary *collapse = status[@"collapseDiagnostic"];
     if ([collapse isKindOfClass:NSDictionary.class]) {
-        for (NSString *key in @[@"event", @"cycle", @"source", @"accepted", @"rejected", @"acceptEvent", @"rejectEvent", @"lastAccept", @"lastReject", @"clearReason", @"clearCycle", @"clearLive", @"clearCompact", @"clearSource", @"directOwners", @"directApplied", @"directApply", @"beginAppearance", @"render", @"consumed"])
+        for (NSString *key in @[@"event", @"cycle", @"source", @"accepted", @"rejected", @"acceptEvent", @"rejectEvent", @"lastAccept", @"lastReject", @"clearReason", @"clearEvent", @"clearCycle", @"clearLive", @"clearCompact", @"clearSource", @"directOwners", @"directApplied", @"directApply", @"beginAppearance", @"render", @"consumed"])
             if (collapse[key]) [lines addObject:[NSString stringWithFormat:@"collapse.%@: %@", key, collapse[key]]];
         for (NSString *section in @[@"raw", @"helper", @"indirect", @"directApplySample", @"beginAppearanceSample", @"renderSample", @"lastConsumed", @"beforeExitSample"]) {
             NSDictionary *sample = collapse[section];

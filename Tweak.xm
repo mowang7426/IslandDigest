@@ -1055,7 +1055,6 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)endAppearance {
     [self recordCollapseDiagnostic:@"beforeExit" reason:@"owner-disappear-before-teardown" consumed:NO];
-    IDStatus(@"collapse-owner-exit", @"preserved-before-teardown");
     double started = IDMonotonic();
     // Mark inactive BEFORE cancellation: no geometry fitting, rendering or eligibility scans.
     self.active = NO; self.dismissed = YES;
@@ -1075,6 +1074,8 @@ static BOOL IDSupplementaryReady(id owner) {
     }
     [self resetFilter]; // Restore actual native filter state, even on teardown.
     IDRecordPerformance(@"disappear", started);
+    // Preserve the pre-teardown scalar sample, but never delay privacy scrubbing with file I/O.
+    IDStatus(@"collapse-owner-exit", @"preserved-before-teardown");
 }
 
 - (void)togglePinnedIdentifier:(NSString *)identifier {
