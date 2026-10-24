@@ -16,6 +16,12 @@
 @property(nonatomic) BOOL layoutChangePending;
 @end
 
+static NSString *IDAuditFlag(id value) {
+    return [value isKindOfClass:NSNumber.class] ? ([value boolValue] ? @"是" : @"否") : @"未知";
+}
+static NSString *IDAuditText(id value) {
+    return [value isKindOfClass:NSString.class] ? value : @"未知";
+}
 static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     PSSpecifier *item = [PSSpecifier preferenceSpecifierNamed:title target:nil set:NULL get:NULL detail:Nil cell:PSGroupCell edit:Nil];
     [item setProperty:footer forKey:@"footerText"];
@@ -154,7 +160,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
 - (NSString *)collapseSummary {
     NSDictionary *s = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
     NSDictionary *d = s[@"collapseDiagnostic"];
-    if (![d isKindOfClass:NSDictionary.class]) return @"暂无 0.3.16 诊断：尚未加载新版本或状态文件不可读。";
+    if (![d isKindOfClass:NSDictionary.class]) return @"暂无 0.3.17 诊断：尚未加载新版本或状态文件不可读。";
     NSDictionary *r = d[@"raw"], *h = d[@"helper"], *i = d[@"indirect"];
     NSArray *states = r[@"states"];
     NSDictionary *v = d[@"lastConsumed"] ?: d[@"renderSample"] ?: d[@"beginAppearanceSample"] ?: d[@"directApplySample"];
@@ -175,6 +181,31 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
         v[@"hidden"] ?: @"—", v[@"alpha"] ?: @"—", v[@"window"] ?: @"—", v[@"height"] ?: @"—",
         v[@"panelHeight"] ?: @"—", v[@"constraintHeight"] ?: @"—",
         d[@"clearReason"], d[@"clearLive"] ?: @0, d[@"clearCompact"] ?: @0];
+}
+- (NSString *)runtimeSummary {
+    NSDictionary *s = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
+    NSDictionary *d = s[@"collapseDiagnostic"];
+    if (![d isKindOfClass:NSDictionary.class]) return @"运行时未知：尚无诊断。";
+    NSMutableArray *lines = [NSMutableArray arrayWithObjects:
+        [NSString stringWithFormat:@"runtimeManager：%@", IDAuditText(d[@"runtimeManager"])],
+        [NSString stringWithFormat:@"runtimeSlider：%@", IDAuditText(d[@"runtimeSlider"])], nil];
+    NSArray *ancestors = d[@"ownerAncestors"];
+    if ([ancestors isKindOfClass:NSArray.class]) {
+        for (id name in ancestors) if ([name isKindOfClass:NSString.class])
+            [lines addObject:[@"ownerAncestors：" stringByAppendingString:name]];
+    } else [lines addObject:@"ownerAncestors：未知"];
+    [lines addObject:@"hookAudit：支持仅指ABI；装=安装时IMP，现=目标当前IMP，实=实例当前IMP。未知不等于否。"];
+    NSArray *names = @[@"主手势", @"辅手势", @"间接手势", @"结束", @"熄屏", @"manager展示", @"slider展示"];
+    NSArray *keys = @[@"collapseInputHook", @"collapseHelperHook", @"collapseIndirectHook", @"collapseEndHook", @"collapseScreenHook", @"collapseExplicitManagerHook", @"collapseExplicitSliderHook"];
+    NSArray *rows = d[@"hookAudit"];
+    for (NSUInteger n = 0; n < 7; n++) {
+        NSDictionary *row = [rows isKindOfClass:NSArray.class] && n < rows.count ? rows[n] : @{};
+        [lines addObject:[NSString stringWithFormat:@"%@ 支持:%@ 装%@ 现%@ 实%@", names[n], IDAuditText(s[keys[n]]), IDAuditFlag(row[@"installedExpected"]), IDAuditFlag(row[@"targetExpectedNow"]), IDAuditFlag(row[@"runtimeExpectedNow"])]];
+        [lines addObject:[NSString stringWithFormat:@"  定义 %@ → %@ / 类 %@", IDAuditText(row[@"beforeDefinition"]), IDAuditText(row[@"runtimeDefinition"]), IDAuditText(row[@"runtimeClass"])]];
+    }
+    NSDictionary *t = d[@"transitionSample"];
+    [lines addObject:[NSString stringWithFormat:@"transitionSample：%@\n展示%@ 用户%@ 主slider%@ 锁已知%@ 锁定%@\n结果：%@", IDAuditText(t[@"entry"]), IDAuditFlag(t[@"presenting"]), IDAuditFlag(t[@"userGesture"]), IDAuditFlag(t[@"primary"]), IDAuditFlag(t[@"lockKnown"]), IDAuditFlag(t[@"uiLocked"]), IDAuditText(t[@"reason"])]];
+    return [lines componentsJoinedByString:@"\n"];
 }
 - (NSString *)diagnostics {
     NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
@@ -223,10 +254,11 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"折叠诊断摘要 · 0.3.16" footer:[self collapseSummary]]];
+    [items addObject:[self group:@"折叠诊断摘要 · 0.3.17" footer:[self collapseSummary]]];
     PSSpecifier *collapseRefresh = [PSSpecifier preferenceSpecifierNamed:@"刷新折叠诊断（下拉一次后截图此处）" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     collapseRefresh.buttonAction = @selector(refreshStatus); [items addObject:collapseRefresh];
-    [items addObject:[self group:@"灵屿通知 0.3.16 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"运行时钩子审计（非真机修复证明）" footer:[self runtimeSummary]]];
+    [items addObject:[self group:@"灵屿通知 0.3.17 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];

@@ -44,7 +44,10 @@ static void IDAuditPresentationRuntime(id owner) {
     NSMutableArray *rows = [NSMutableArray new];
     for (unsigned i = 0; i < 7; i++) {
         IDPresentationHookRecord *r = &IDPresentationHooks[i];
-        if (!r->captured) continue;
+        if (!r->captured) {
+            [rows addObject:@{}]; // Keep seven stable positions; missing is unknown.
+            continue;
+        }
         id instance = [manager isKindOfClass:r->target] ? manager : [slider isKindOfClass:r->target] ? slider : nil;
         Class runtime = object_getClass(instance);
         [rows addObject:@{@"selector":NSStringFromSelector(r->selector),
@@ -53,7 +56,7 @@ static void IDAuditPresentationRuntime(id owner) {
             @"targetExpectedNow":@(IDHookMatches(r->target, r->selector, r->expected)),
             @"runtimeClass":IDHookClassName(runtime),
             @"runtimeDefinition":IDHookClassName(IDHookDefiningClass(runtime, r->selector)),
-            @"runtimeExpectedNow":@(IDHookMatches(runtime, r->selector, r->expected))}];
+            @"runtimeExpectedNow":runtime ? (id)@(IDHookMatches(runtime, r->selector, r->expected)) : (id)@"unknown"}];
     }
     IDCollapseTrace[@"hookAudit"] = rows;
 }
