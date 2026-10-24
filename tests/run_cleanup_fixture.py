@@ -106,6 +106,7 @@ int main(void) { @autoreleasepool {
     assert(!f.cardContentDirty && !label.text && !label.accessibilityLabel);
     assert(!card.accessibilityValue && !card.accessibilityHint && !card.accessibilityCustomActions);
     assert(!card.openAction && !button.hasTarget && !f.cardNotice.text);
+    assert(f.cardNotice.hidden && !f.cardNotice.accessibilityLabel);
     assert(f.cardScroll.hidden && !f.builtCardCount);
     unsigned oldWalks=walks, oldMutations=mutations;
     for (unsigned i=0; i<1000; i++) [f dropCards];

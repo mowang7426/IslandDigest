@@ -81,7 +81,7 @@ digest = (root/'IDDigestUI.inc').read_text()
 assert digest.count('contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever') == 2
 assert 'contentLayoutGuide' in digest and 'frameLayoutGuide.widthAnchor constant:-28' in digest
 assert 'withHorizontalFittingPriority:UILayoutPriorityRequired' in digest
-assert 'MIN(category + 38 + content, IDPanelMaxHeight)' in digest
+assert 'MIN(category + noticeHeight + content, IDPanelMaxHeight)' in digest
 assert 'shell.translatesAutoresizingMaskIntoConstraints = NO' in ui
 assert 'constraintGreaterThanOrEqualToConstant:64' in ui
 assert 'self.builtCardCount = rendered' in ui and 'self.builtCardCount = 0' in ui

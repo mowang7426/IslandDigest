@@ -156,7 +156,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.22 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.23 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"插件通知卡片" key:@"ContainedMode"]];
     [items addObject:[self group:@"预览与隐私" footer:@"预览默认关闭。仅在解锁、受保护数据可用且界面可见时读取内容；锁定即清空。可能无法遵循每个 App 的“永不显示预览”，请谨慎开启。内容不联网、不写入日志或偏好。"]];
