@@ -1,7 +1,9 @@
 #import "IDDiagnosticsController.h"
 #import <Preferences/PSSpecifier.h>
-#import "../IDShared.h"
 #import "IDDiagnosticsSnapshot.h"
+
+// Read-only page: do not import the preference mutation helpers from IDShared.h.
+static NSString *const IDStatusPath = @"/var/mobile/Library/Preferences/com.local.islanddigest.status.plist";
 
 @interface IDDiagnosticsController ()
 @property(nonatomic, copy) NSDictionary *idSnapshot;
@@ -23,7 +25,8 @@
     self.title = @"诊断信息";
     NSDictionary *snapshot = self.idSnapshot ?: @{};
     NSMutableArray *items = [NSMutableArray new];
-    [self idAppendSection:@"记录状态" text:IDDiagnosticAvailability(snapshot, ID_VERSION) items:items];
+    NSString *version = [[NSBundle bundleForClass:self.class] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"未知";
+    [self idAppendSection:@"记录状态" text:IDDiagnosticAvailability(snapshot, version) items:items];
     PSSpecifier *refresh = [PSSpecifier preferenceSpecifierNamed:@"刷新诊断信息" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
     refresh.buttonAction = @selector(idRefreshDiagnostics);
     [items addObject:refresh];

@@ -15,6 +15,10 @@ assert '@implementation IDDiagnosticsController' in page
 assert 'IslandDigestPrefs_FILES := IDPrefs.m IDDiagnosticsController.m' in (r/'prefs/Makefile').read_text()
 for forbidden in ('IDStatusPath', 'IDDiagnosticSnapshot(', 'IDCollapseSummary(', 'IDRuntimeSummary(', 'IDDiagnosticsSummary('):
     assert forbidden not in home
+assert 'objectForInfoDictionaryKey:@"CFBundleVersion"' in page
+import re
+shared = (r/'IDShared.h').read_text()
+assert re.search(r'IDStatusPath = (@"[^"]+")', page).group(1) == re.search(r'IDStatusPath = (@"[^"]+")', shared).group(1)
 assert page.count('dictionaryWithContentsOfFile:IDStatusPath') == 1
 refresh = page.split('- (void)idRefreshDiagnostics {', 1)[1].split('\n}', 1)[0]
 assert 'dictionaryWithContentsOfFile:IDStatusPath' in refresh
@@ -23,7 +27,7 @@ assert '@selector(idRefreshDiagnostics)' in page
 assert 'dictionaryWithContentsOfFile' not in page.split('- (NSArray *)specifiers {')[1].split('- (void)idRefreshDiagnostics')[0]
 for forbidden in ('NSTimer', 'dispatch_after', 'NSLog', 'IDWritePreference(', 'IDNotifyPreferencesChanged(', 'CFNotificationCenterPostNotification', 'heightForFooterInSection', 'CGRectMake', 'UIColor', 'UIFont'):
     assert forbidden not in page
-for section in ('IDCollapseSummary(snapshot)', 'IDRuntimeSummary(snapshot)', 'IDDiagnosticsSummary(snapshot)', 'IDDiagnosticAvailability(snapshot, ID_VERSION)'):
+for section in ('IDCollapseSummary(snapshot)', 'IDRuntimeSummary(snapshot)', 'IDDiagnosticsSummary(snapshot)', 'IDDiagnosticAvailability(snapshot, version)'):
     assert section in page
 for field in ('primaryBoundary', 'primaryEndAppeared', 'primaryLifecycleHook', 'hookAudit', 'transitionSample', 'runtimeManager', 'runtimeSlider', 'ownerAncestors'):
     assert '@"'+field+'"' in snapshot
