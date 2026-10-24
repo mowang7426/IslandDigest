@@ -1,3 +1,11 @@
+# 灵屿通知 0.3.16 · 折叠诊断增强版
+
+从 `5bdc4babe58f6cc72c4b5c23514430e60d5dc5a1` 的 0.3.15 行为派生，仅增强观测，不宣称已修复手势漏接。开发分支 `feature/0.3.16-collapse-diagnostics`，不合并 main。
+
+新增设置顶部中文折叠诊断摘要：主入口全状态计数、两个只读 probe、独立接受/拒绝历史、消费与最终视图状态。完整说明、固定头文件依据及一次截图步骤见 [COLLAPSE-DIAGNOSTICS-0.3.16.md](COLLAPSE-DIAGNOSTICS-0.3.16.md)。旧详细诊断保留。Changed 只更新固定大小内存计数，关键阶段/退出合并持久化；不输出通知正文、request 或 app 标识。
+
+以下是历史版本文档，不能视为 0.3.16 真机验证结果。
+
 # 灵屿通知 0.3.9 · MoWang
 
 基于 0.3.8 `dc73d5c`，分支 `feature/0.3.9-notification-capacity`，叠加 PR 的 base 为 `feature/0.3.8-hide-readiness`；不推送或合并 main。不恢复已删除的 0.3.4 代码、依赖或安装包。

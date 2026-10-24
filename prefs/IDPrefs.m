@@ -151,6 +151,28 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     IDNotifyPreferencesChanged();
     _specifiers = nil; [self reloadSpecifiers];
 }
+- (NSString *)collapseSummary {
+    NSDictionary *s = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
+    NSDictionary *d = s[@"collapseDiagnostic"];
+    if (![d isKindOfClass:NSDictionary.class]) return @"暂无 0.3.16 诊断：尚未加载新版本或状态文件不可读。";
+    NSDictionary *r = d[@"raw"], *h = d[@"helper"], *i = d[@"indirect"];
+    NSArray *states = r[@"states"];
+    NSDictionary *v = d[@"lastConsumed"];
+    NSString *fresh = [s[@"updated"] isKindOfClass:NSDate.class] && -[s[@"updated"] timeIntervalSinceNow] < 300 ? @"新鲜" : @"超过5分钟";
+    return [NSString stringWithFormat:
+        @"版本 %@ / iOS %@ / PID %@（%@）\n开关 有效%@ 保存%@ 内置%@\n主入口 %@ 次，前%@→后%@，主线程%@\n状态 P/B/C/E/X/F：%@\nhelper %@ / indirect %@ / 事件#%@\n接受%@ 拒绝%@ / 周期%@ / 消费%@\n直用%@ 出现%@ 渲染%@ / 应用拥有者%@\n最后接受：%@ (#%@)\n最后拒绝：%@ (#%@)\n消费：%@ / %@ / owner%@\n胶囊 hidden%@ α%@ window%@ 高%@\n面板高%@ / 约束高%@\n清理：%@（此前 live%@ compact%@）",
+        s[@"version"], s[@"system"], s[@"pid"], fresh,
+        s[@"effectiveCollapse"], s[@"currentPrefCollapse"], s[@"effectiveContained"],
+        r[@"total"], r[@"pre"], r[@"post"], r[@"main"],
+        states.count == 7 ? [[states subarrayWithRange:NSMakeRange(0, 6)] componentsJoinedByString:@"/"] : @"—",
+        h[@"total"], i[@"total"], d[@"event"], d[@"accepted"], d[@"rejected"], d[@"cycle"], d[@"consumed"],
+        d[@"directApply"], d[@"beginAppearance"], d[@"render"], d[@"directApplied"] ?: @0,
+        d[@"lastAccept"], d[@"acceptEvent"] ?: @0, d[@"lastReject"], d[@"rejectEvent"] ?: @0,
+        v[@"stage"] ?: @"未消费", v[@"reason"] ?: d[@"directApplySample"][@"reason"] ?: @"—", v[@"owner"] ?: @0,
+        v[@"hidden"] ?: @"—", v[@"alpha"] ?: @"—", v[@"window"] ?: @"—", v[@"height"] ?: @"—",
+        v[@"panelHeight"] ?: @"—", v[@"constraintHeight"] ?: @"—",
+        d[@"clearReason"], d[@"clearLive"] ?: @0, d[@"clearCompact"] ?: @0];
+}
 - (NSString *)diagnostics {
     NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:IDStatusPath];
     if (!status) return @"未收到 SpringBoard 诊断。可能尚未加载、未启用插件注入、处于安全模式，或诊断文件不可读；这不是已确认的失败原因。请确认当前越狱的插件注入开启，并确认安装的是原生 RootHide 包。";
@@ -159,7 +181,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if ([updated isKindOfClass:NSDate.class] && -updated.timeIntervalSinceNow > 300) [lines addObject:@"注意：诊断已超过 5 分钟，可能是上次进程的记录；请打开通知中心后刷新。"];
     if ([status[ @"alwaysHideActive"] boolValue]) [lines addObject:@"高风险始终隐藏已激活：若面板空白，关闭始终隐藏与隐藏原生列表后重新打开通知中心恢复。"];
     // Whitelist only: local pin/selection preferences never enter diagnostics.
-    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"effectiveEnabled", @"effectiveGrouping", @"currentPrefEnabled", @"currentPrefGrouping", @"lastActiveReadCompletion", @"lastActiveReadCancelReason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"presentationGestureSupported", @"collapseInputHook", @"collapseEndHook", @"collapseScreenHook", @"collapseSignal", @"collapseGestureCount", @"effectiveCollapse", @"currentPrefCollapse", @"effectiveContained", @"collapseCycle", @"collapseCycleLive", @"collapseCycleCompact", @"collapseLastReason", @"collapseAppliedOwners", @"collapseLastEnd", @"masterEventHooks", @"enumerationVisits", @"enumerationSlices", @"enumerationCaptured", @"selectedRequests", @"cardPage", @"cardPages", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
+    for (NSString *key in @[@"version", @"system", @"pid", @"updated", @"stage", @"reason", @"effectiveEnabled", @"effectiveGrouping", @"currentPrefEnabled", @"currentPrefGrouping", @"lastActiveReadCompletion", @"lastActiveReadCancelReason", @"initAttempts", @"hooksInstalled", @"ownerSeen", @"visibleOwnerSeen", @"masterSeen", @"enumerationSupported", @"enumerationComplete", @"enumerationState", @"enumerationReadPath", @"collectionClass", @"collectionCount", @"nativeCountKnown", @"nativeModelCount", @"presentationGestureSupported", @"collapseInputHook", @"collapseHelperHook", @"collapseIndirectHook", @"collapseEndHook", @"collapseScreenHook", @"collapseSignal", @"collapseGestureCount", @"effectiveCollapse", @"currentPrefCollapse", @"effectiveContained", @"collapseCycle", @"collapseCycleLive", @"collapseCycleCompact", @"collapseLastReason", @"collapseAppliedOwners", @"collapseLastEnd", @"masterEventHooks", @"enumerationVisits", @"enumerationSlices", @"enumerationCaptured", @"selectedRequests", @"cardPage", @"cardPages", @"ownerCount", @"activeOwnerCount", @"selectedOwnerState", @"sections", @"apps", @"requests", @"filterAvailable", @"presentation", @"clearAvailable", @"clearReason", @"clearResult", @"containedEnabled", @"hideNativeRequested", @"nativeHideSupported", @"nativeHidden", @"nativeHideReason", @"nativeVisibilityHooks", @"nativeCandidateClass", @"nativeCandidateSameWindow", @"nativeCurrentOwner", @"nativeDecisionStage", @"previewPolicyReason", @"cardsRendered", @"cardsRedacted", @"cardsLayoutReady", @"cardsReadinessReason", @"cardsReadinessIndex", @"cardsReadinessType", @"cardsReadinessWidth", @"cardsReadinessHeight", @"cardsContentHeight", @"cardsViewportHeight", @"cardsStackHeight", @"cardsScrollEnabled", @"panelCollapseState", @"retainedExpandedLayoutReady", @"capsuleReachable", @"capsuleHideReady", @"perfCount_snapshot", @"perfMaxMs_snapshot", @"perfCount_render", @"perfMaxMs_render", @"perfCount_refresh", @"perfMaxMs_refresh", @"perfCount_disappear", @"perfMaxMs_disappear"])
         if (status[key]) [lines addObject:[NSString stringWithFormat:@"%@: %@", key, status[key]]];
     // The saved active verdict survives an inactive teardown sample. Whitelist
     // nested scalars too: never display arbitrary diagnostic dictionary content.
@@ -172,13 +194,36 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
                 [lines addObject:[NSString stringWithFormat:@"  %@: %@", key, value]];
         }
     }
+    NSDictionary *collapse = status[@"collapseDiagnostic"];
+    if ([collapse isKindOfClass:NSDictionary.class]) {
+        for (NSString *key in @[@"event", @"cycle", @"source", @"accepted", @"rejected", @"acceptEvent", @"rejectEvent", @"lastAccept", @"lastReject", @"clearReason", @"clearCycle", @"clearLive", @"clearCompact", @"clearSource", @"directOwners", @"directApplied", @"directApply", @"beginAppearance", @"render", @"consumed"])
+            if (collapse[key]) [lines addObject:[NSString stringWithFormat:@"collapse.%@: %@", key, collapse[key]]];
+        for (NSString *section in @[@"raw", @"helper", @"indirect", @"directApplySample", @"beginAppearanceSample", @"renderSample", @"lastConsumed", @"beforeExitSample"]) {
+            NSDictionary *sample = collapse[section];
+            if (![sample isKindOfClass:NSDictionary.class]) continue;
+            for (NSString *key in @[@"total", @"pre", @"post", @"event", @"postEvent", @"main", @"offMain", @"recognizer", @"class", @"stage", @"reason", @"consumed", @"cycle", @"source", @"owner", @"live", @"compact", @"state", @"active", @"disabled", @"overlay", @"inserted", @"loaded", @"capsuleExists", @"hidden", @"alpha", @"window", @"height", @"panelHidden", @"panelAlpha", @"panelWindow", @"panelHeight", @"constraintHeight"]) {
+                id value = sample[key];
+                if ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])
+                    [lines addObject:[NSString stringWithFormat:@"collapse.%@.%@: %@", section, key, value]];
+            }
+            for (NSString *key in @[@"states", @"postStates"]) {
+                NSArray *values = sample[key];
+                if (![values isKindOfClass:NSArray.class] || values.count != 7) continue;
+                BOOL safe = YES; for (id value in values) if (![value isKindOfClass:NSNumber.class]) safe = NO;
+                if (safe) [lines addObject:[NSString stringWithFormat:@"collapse.%@.%@ (P/B/C/E/X/F/unknown): %@", section, key, [values componentsJoinedByString:@"/"]]];
+            }
+        }
+    }
     return [lines componentsJoinedByString:@"\n"];
 }
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.15 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
+    [items addObject:[self group:@"折叠诊断摘要 · 0.3.16" footer:[self collapseSummary]]];
+    PSSpecifier *collapseRefresh = [PSSpecifier preferenceSpecifierNamed:@"刷新折叠诊断（下拉一次后截图此处）" target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:Nil];
+    collapseRefresh.buttonAction = @selector(refreshStatus); [items addObject:collapseRefresh];
+    [items addObject:[self group:@"灵屿通知 0.3.16 · MoWang" footer:@"作者：MoWang。插件内通知卡片在满足严格解锁门控时显示原生标题、副标题和正文；不联网、不生成摘要、不写入日志或偏好。锁定或受保护数据不可用时立即清空卡片内容。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"按应用分组 / 筛选" key:@"Grouping"]];
     [items addObject:[self toggle:@"显示通知数量" key:@"ShowCounts"]];

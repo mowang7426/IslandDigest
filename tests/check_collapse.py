@@ -11,7 +11,9 @@ for key in ('UIViewPropertyAnimator', 'UIAccessibilityIsReduceMotionEnabled()', 
     assert key in c, key
 for forbidden in ('openCardRequest', 'accessibilityActivate', 'beginClear', 'dropCards', 'dropContainedContent', 'IDWritePreference', 'applyFilter', 'transform', 'scale'):
     assert forbidden not in c, forbidden
-assert 'if (IDPanelTransitioning(self.collapseState)) { self.renderAfterCollapse = YES; return; }' in t
+transition = t.split('if (IDPanelTransitioning(self.collapseState)) {', 1)[1].split('}', 1)[0]
+assert 'self.renderAfterCollapse = YES;' in transition and 'return;' in transition
+assert 'recordCollapseDiagnostic:@"render" reason:@"transition-in-progress" consumed:NO' in transition
 assert 'IDPanelTransitioning(self.collapseState) && !self.collapseGeometryAllowed' in t
 assert 'if (IDPanelCompact(self.collapseState)) rect = IDPanelCapsule(rect)' in t
 for anchor in ('overlayHeight.constant=rect.height', 'overlayTop.constant=rect.y', 'overlayLeft.constant=rect.x', 'overlayWidth.constant=rect.width'):
