@@ -5,9 +5,10 @@
 /* Only an ABI-checked explicit user-presentation event may start a cycle.
  * Owner appearances, notification mutations and screen wakes are not events. */
 typedef struct { bool live; bool compact; } IDStablePresentation;
-static inline bool IDStableBeginPresentation(IDStablePresentation *cycle, bool userGesture,
-                                             bool alreadyPresented, bool enabled) {
-    if (!enabled || !userGesture || alreadyPresented || cycle->live) return false;
+static inline bool IDStableUserPull(IDStablePresentation *cycle, bool began, bool duplicate, bool enabled) {
+    if (!began || duplicate || !enabled) return false;
+    // Each distinct user gesture is a new attempt, even after a cancelled pull.
+    // isPresented may already be true when the input callback is delivered.
     cycle->live = true; cycle->compact = true;
     return true;
 }

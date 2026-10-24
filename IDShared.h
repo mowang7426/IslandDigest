@@ -21,10 +21,10 @@ static id IDPreferenceValue(NSString *key) {
         kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
     return CFBridgingRelease(value);
 }
-static void IDWritePreference(NSString *key, id value) {
+static BOOL IDWritePreference(NSString *key, id value) {
     CFPreferencesSetValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value,
         IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-    CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    return CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 }
 static NSArray<NSString *> *IDPinnedIdentifiers(void) {
     id value = IDPreferenceValue(@"PinnedApps");

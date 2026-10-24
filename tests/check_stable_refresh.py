@@ -8,11 +8,11 @@ p = (r/'prefs/IDPrefs.m').read_text()
 begin = t.split('- (void)beginAppearance {')[1].split('- (void)endAppearance {')[0]
 assert 'IDStableBeginPresentation' not in begin
 assert 'IDStableAppearanceState' not in t
-assert t.count('IDStableBeginPresentation(&IDPresentationCycle') == 1
-for name in ('coverSheetSlidingViewControllerUserPresentGestureBegan:', 'coverSheetSlidingViewControllerCleanupDismissalTransition:'):
-    assert f'IDOwnObjectEvent(presentation, "{name}")' in t
-assert 'IDMethod(presentation, "isPresented", "B", 2)' in t
-assert 'IDMethod(presentation, "noteScreenDidTurnOff", "v", 2)' in t
+for name in ('_handlePresentGesture:', '_endTransitionToAppeared:', 'noteScreenDidTurnOff'):
+    assert name in t
+assert 'IDInstallPullHooks(); // Independent retry' in t
+assert 'IDStableUserPull(&IDPresentationCycle' in t
+assert 'IDStableBeginPresentation(&IDPresentationCycle' not in t
 assert 'IDStableEndPresentation(&IDPresentationCycle)' in t
 assert 'if (!IDContainedMode || !self.overlay) self.collapseState = IDPanelExpanded' in t
 assert 'IDPresentationCycle.compact = IDPanelCompact' in (r/'IDCollapseCoordinator.inc').read_text()

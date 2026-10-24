@@ -57,10 +57,15 @@ static void IDRecordPerformance(NSString *stage, double started) {
 }
 static void IDStatus(NSString *stage, NSString *reason) {
     if (!IDDiagnostics) IDDiagnostics = [NSMutableDictionary new];
-    IDDiagnostics[@"version"] = @"0.3.14";
+    IDDiagnostics[@"version"] = @"0.3.15";
     IDDiagnostics[@"effectiveEnabled"] = @(IDEnabled);
     IDDiagnostics[@"effectiveGrouping"] = @(IDGrouping);
     IDDiagnostics[@"currentPrefEnabled"] = @(IDPref(@"Enabled", YES));
+    IDDiagnostics[@"effectiveCollapse"] = @(IDCollapseOnPresentation);
+    IDDiagnostics[@"effectiveContained"] = @(IDContainedMode);
+    IDDiagnostics[@"currentPrefCollapse"] = @(IDPref(@"CollapseOnPresentation", NO));
+    IDDiagnostics[@"collapseCycleLive"] = @(IDPresentationCycle.live);
+    IDDiagnostics[@"collapseCycleCompact"] = @(IDPresentationCycle.compact);
     IDDiagnostics[@"currentPrefGrouping"] = @(IDPref(@"Grouping", YES));
     IDDiagnostics[@"system"] = UIDevice.currentDevice.systemVersion;
     IDDiagnostics[@"pid"] = @(getpid());
@@ -162,7 +167,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.14.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.15.startup-pending";
 #endif
 }
 
@@ -1530,37 +1535,117 @@ static BOOL IDOpenFeedback(NSString *message) {
 %end
 %end
 
-%group IDPresentationEvents
-%hook SBCoverSheetPresentationManager
-- (void)coverSheetSlidingViewControllerUserPresentGestureBegan:(id)controller {
-    // Runtime-header explicit USER gesture, not generic setPresented/viewWillAppear.
-    BOOL presented = YES;
-    if (NSThread.isMainThread && IDClearBool(self, "isPresented", &presented)
-        && IDStableBeginPresentation(&IDPresentationCycle, YES, presented,
-            IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation)) {
-        for (id owner in IDOwners.allObjects) {
-            IDCoordinator *state = IDState(owner);
-            if (state.active && state.overlay) { [state cancelCollapse]; [state render]; }
+// User input only: programmatic presentation, owner activity and model changes are not signals.
+static char IDPullBeganKey;
+static BOOL IDPullHookInstalled, IDPullEndHookInstalled, IDPullScreenHookInstalled;
+static void IDApplyPullCollapse(void) {
+    NSUInteger applied = 0;
+    for (id owner in IDOwners.allObjects) {
+        IDCoordinator *state = IDState(owner);
+        if (!state.active || !state.overlay || !state.inserted || !state.panel.isViewLoaded) continue;
+        // Do not wait for render/snapshot readiness. An already mounted panel must fold now.
+        [state cancelClear];
+        [state cancelCollapse];
+        state.collapseState = IDStablePresentationState(IDPresentationCycle,
+            IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation);
+        [(IDDigestView *)state.panel.view updateCollapsePresentation];
+        [state updatePanelGeometry];
+        [state.owner.view layoutIfNeeded];
+        [state.panel.view setNeedsLayout];
+        [state.panel.view layoutIfNeeded];
+        [state updateNativeListVisibility];
+        applied++;
+    }
+    IDDiagnostics[@"collapseAppliedOwners"] = @(applied);
+}
+static void IDPullEnded(NSString *reason) {
+    IDStableEndPresentation(&IDPresentationCycle);
+    IDDiagnostics[@"collapseLastEnd"] = reason;
+    IDStatus(@"pull-ended", reason);
+}
+%group IDPullInput
+%hook SBCoverSheetSlidingViewController
+- (void)_handlePresentGesture:(id)gesture {
+    if (NSThread.isMainThread && [gesture isKindOfClass:UIGestureRecognizer.class]) {
+        UIGestureRecognizerState phase = [(UIGestureRecognizer *)gesture state];
+        BOOL duplicate = [objc_getAssociatedObject(gesture, &IDPullBeganKey) boolValue];
+        objc_setAssociatedObject(gesture, &IDPullBeganKey, @(phase == UIGestureRecognizerStateBegan), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (phase == UIGestureRecognizerStateBegan) {
+            IDDiagnostics[@"collapseGestureCount"] = @([IDDiagnostics[@"collapseGestureCount"] unsignedIntegerValue] + 1);
+            // Without a screen-off reset, a stale compact cycle could leak into a lock wake.
+            BOOL enabled = IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation && IDPullScreenHookInstalled;
+            if (IDStableUserPull(&IDPresentationCycle, YES, duplicate, enabled)) {
+                IDDiagnostics[@"collapseCycle"] = @([IDDiagnostics[@"collapseCycle"] unsignedIntegerValue] + 1);
+                IDDiagnostics[@"collapseLastReason"] = @"accepted-user-pan-began";
+                IDApplyPullCollapse();
+            } else IDDiagnostics[@"collapseLastReason"] = duplicate ? @"duplicate-began" : !IDEnabled ? @"plugin-disabled" : !IDGrouping ? @"grouping-disabled" : !IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : @"screen-off-hook-unavailable";
+            IDStatus(@"pull-input", IDDiagnostics[@"collapseLastReason"]);
+        } else if (phase == UIGestureRecognizerStateCancelled || phase == UIGestureRecognizerStateFailed) {
+            IDPullEnded(@"gesture-cancelled-or-failed");
         }
+    } else if (NSThread.isMainThread) {
+        IDDiagnostics[@"collapseLastReason"] = @"payload-not-UIGestureRecognizer";
+        IDStatus(@"pull-rejected", IDDiagnostics[@"collapseLastReason"]);
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            IDDiagnostics[@"collapseLastReason"] = @"input-off-main-rejected";
+            IDStatus(@"pull-rejected", IDDiagnostics[@"collapseLastReason"]);
+        });
     }
     %orig;
 }
-- (void)coverSheetSlidingViewControllerCleanupDismissalTransition:(id)controller {
-    IDStableEndPresentation(&IDPresentationCycle);
+%end
+%end
+%group IDPullTransitionEnd
+%hook SBCoverSheetSlidingViewController
+- (void)_endTransitionToAppeared:(BOOL)appeared {
     %orig;
+    if (NSThread.isMainThread && !appeared) IDPullEnded(@"transition-ended-hidden");
 }
-- (void)coverSheetSlidingViewControllerDidEndTransition:(id)controller {
-    %orig;
-    BOOL presented = YES;
-    if (IDClearBool(self, "isPresented", &presented) && !presented)
-        IDStableEndPresentation(&IDPresentationCycle); // Includes a cancelled pull.
-}
+%end
+%end
+%group IDPullScreenOff
+%hook SBCoverSheetPresentationManager
 - (void)noteScreenDidTurnOff {
-    IDStableEndPresentation(&IDPresentationCycle);
+    if (NSThread.isMainThread) IDPullEnded(@"screen-off");
     %orig;
 }
 %end
 %end
+
+// Inherited implementations are safe here: Logos internal generator installs an override on
+// the requested class, never a hook on UIViewController or another superclass.
+static NSString *IDPullMethodSupport(Class target, const char *name, const char *argument) {
+    if (!target) return @"class-missing";
+    Method method = class_getInstanceMethod(target, sel_registerName(name));
+    if (!method) return @"selector-missing";
+    if (!IDMethod(target, name, "v", argument ? 3 : 2)) return @"return-or-arity-mismatch";
+    if (argument && !IDArgument(target, name, 2, argument)) return @"argument-ABI-mismatch";
+    return @"supported";
+}
+static void IDInstallPullHooks(void) {
+    if (!IDDiagnostics[@"collapseLastReason"]) IDDiagnostics[@"collapseLastReason"] = @"waiting-for-user-pan-began";
+    Class sliding = objc_getClass("SBCoverSheetSlidingViewController");
+    Class manager = objc_getClass("SBCoverSheetPresentationManager");
+    if (!IDPullHookInstalled) {
+        NSString *support = IDPullMethodSupport(sliding, "_handlePresentGesture:", "@");
+        IDDiagnostics[@"collapseInputHook"] = support;
+        if ([support isEqualToString:@"supported"]) { %init(IDPullInput); IDPullHookInstalled = YES; }
+    }
+    if (!IDPullEndHookInstalled) {
+        NSString *support = IDPullMethodSupport(sliding, "_endTransitionToAppeared:", "B");
+        IDDiagnostics[@"collapseEndHook"] = support;
+        if ([support isEqualToString:@"supported"]) { %init(IDPullTransitionEnd); IDPullEndHookInstalled = YES; }
+    }
+    if (!IDPullScreenHookInstalled) {
+        NSString *support = IDPullMethodSupport(manager, "noteScreenDidTurnOff", NULL);
+        IDDiagnostics[@"collapseScreenHook"] = support;
+        if ([support isEqualToString:@"supported"]) { %init(IDPullScreenOff); IDPullScreenHookInstalled = YES; }
+    }
+    IDDiagnostics[@"presentationGestureSupported"] = @(IDPullHookInstalled);
+    IDDiagnostics[@"collapseSignal"] = @"SBCoverSheetSlidingViewController._handlePresentGesture: / UIGestureRecognizerStateBegan";
+}
+
 
 // Do not hook a superclass implementation or install missing method stubs.
 static BOOL IDOwnObjectEvent(Class target, const char *name) {
@@ -1581,7 +1666,11 @@ static BOOL IDOwnObjectEvent(Class target, const char *name) {
 static BOOL IDHooksInstalled;
 static NSUInteger IDInstallAttempts;
 static void IDInstallHooks(void) {
-    if (IDHooksInstalled) return;
+    if (IDHooksInstalled) {
+        IDInstallPullHooks(); // Independent retry after the owner startup guard succeeded.
+        IDStatus(@"pull-hook-retry", @"Independent input hook probe");
+        return;
+    }
     IDInstallAttempts++;
     IDDiagnostics[@"initAttempts"] = @(IDInstallAttempts);
     Class owner = objc_getClass("NCNotificationStructuredListViewController");
@@ -1616,14 +1705,7 @@ static void IDInstallHooks(void) {
         %init(IDFilter);
     }
     %init(IDMain);
-    Class presentation = objc_getClass("SBCoverSheetPresentationManager");
-    BOOL presentationEvents = IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerUserPresentGestureBegan:")
-        && IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerCleanupDismissalTransition:")
-        && IDOwnObjectEvent(presentation, "coverSheetSlidingViewControllerDidEndTransition:")
-        && IDMethod(presentation, "noteScreenDidTurnOff", "v", 2)
-        && IDMethod(presentation, "isPresented", "B", 2);
-    if (presentationEvents) { %init(IDPresentationEvents); }
-    IDDiagnostics[@"presentationGestureSupported"] = @(presentationEvents);
+    IDInstallPullHooks();
     Class nativeListClass = objc_getClass("NCNotificationListView");
     BOOL nativeVisibilityHooks = nativeListClass && [nativeListClass isSubclassOfClass:UIView.class]
         && IDMethod(nativeListClass, "setHidden:", "v", 3)
@@ -1653,8 +1735,10 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
         IDLoadOptions();
         if (!IDCollapseOnPresentation || !IDContainedMode || !IDEnabled || !IDGrouping)
             IDStableEndPresentation(&IDPresentationCycle);
+        if (!IDCollapseOnPresentation || !IDContainedMode) IDApplyPullCollapse();
+        IDStatus(@"preferences-loaded", @"Collapse applies on the next distinct user pull");
         BOOL retry = CFEqual(name, CFSTR("com.local.islanddigest/retry"));
-        if (retry && !IDHooksInstalled) {
+        if (retry) {
             unlink(IDStartupMarkerPath()); // Explicit user recovery, not an automatic guard bypass.
             IDInstallHooks();
         }
