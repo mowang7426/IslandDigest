@@ -23,6 +23,7 @@
 #import "IDStableRefreshLogic.h"
 #import "IDRuntimeHookAudit.h"
 static void IDAuditPresentationRuntime(id owner);
+static void IDSchedulePresentationAudit(id owner);
 static id IDPresentationManagerIfLoaded(void);
 static char IDStableCardModelKey, IDStableCardRevisionKey, IDStableGroupSignatureKey;
 static BOOL IDCollapseOnPresentation = NO;
@@ -36,6 +37,7 @@ static double IDMonotonic(void) {
 #include <sys/stat.h>
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
+static NSString *IDDesiredAppCache;
 static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO, IDAlwaysHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -115,6 +117,8 @@ static void IDLoadOptions(void) {
     IDGridColumns = [columns isEqualToString:@"two"] ? 2 : [columns isEqualToString:@"auto"] ? 0 : 3;
     IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
+    id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
+    IDDesiredAppCache = [desired isKindOfClass:NSString.class] && [desired length] ? [desired copy] : nil;
     IDCollapseOnPresentation = IDPref(@"CollapseOnPresentation", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
     IDHideNative = IDPref(@"HideNativeList", NO) && IDContainedMode;
@@ -144,7 +148,21 @@ static void IDLoadOptions(void) {
     containsUnmanagedContent:(BOOL)unmanaged preventsUserDismissal:(BOOL)prevents;
 @end
 
-static void IDLog(const char *event) {
+static void IDExportObservedApps(NSDictionary *names, NSArray *observed) {
+    // Publish both cache values together; serialize persistence away from UIKit.
+    CFPreferencesSetValue(CFSTR("AppNames"), (__bridge CFPropertyListRef)names,
+        IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    CFPreferencesSetValue(CFSTR("ObservedApps"), (__bridge CFPropertyListRef)observed,
+        IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.local.islanddigest.preferences", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(queue, ^{
+        CFPreferencesSynchronize(IDPrefsDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    });
+}
+
+static void IDWriteLog(const char *event) {
 #ifdef ID_REGRESSION
     return;
 #endif
@@ -161,6 +179,18 @@ static void IDLog(const char *event) {
     }
     fprintf(file, "%lld pid=%d %s\n", (long long)time(NULL), getpid(), event);
     fclose(file);
+}
+
+static void IDLog(const char *event) {
+#ifdef ID_REGRESSION
+    return;
+#endif
+    NSString *message = event ? [NSString stringWithUTF8String:event] : nil;
+    if (!message) return;
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.local.islanddigest.log", DISPATCH_QUEUE_SERIAL); });
+    dispatch_async(queue, ^{ IDWriteLog(message.UTF8String); });
 }
 
 static BOOL IDOpenFeedback(NSString *message);
@@ -187,7 +217,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.23.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.24.startup-pending";
 #endif
 }
 
@@ -348,6 +378,7 @@ static NSArray *IDItems(id object) {
 - (void)dropCards;
 - (CGFloat)categoryHeightForWidth:(CGFloat)width;
 @property(nonatomic, weak) IDCoordinator *coordinator;
+- (void)showCapsuleGroups:(NSArray<IDGroup *> *)groups;
 - (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected;
 @end
 
@@ -417,6 +448,7 @@ static NSArray *IDItems(id object) {
 @property(nonatomic) IDPanelState collapseState;
 @property(nonatomic, strong) UIViewPropertyAnimator *collapseAnimator;
 @property(nonatomic) BOOL collapseGeometryAllowed;
+@property(nonatomic) BOOL cardsDeferred;
 @property(nonatomic) BOOL renderAfterCollapse;
 - (void)toggleCollapsed;
 - (void)cancelCollapse;
@@ -749,8 +781,8 @@ static BOOL IDSupplementaryReady(id owner) {
         names[identifier] = groups[identifier].name;
         [observed addObject:identifier];
     }
-    if (![storedNames isEqual:names]) IDWritePreference(@"AppNames", names);
-    if (![IDPreferenceValue(@"ObservedApps") isEqual:observed]) IDWritePreference(@"ObservedApps", observed);
+    if (![storedNames isEqual:names] || ![IDPreferenceValue(@"ObservedApps") isEqual:observed])
+        IDExportObservedApps(names, observed);
     self.snapshotGroups = [groups.allValues sortedArrayUsingComparator:^NSComparisonResult(IDGroup *first, IDGroup *second) {
         return (NSComparisonResult)IDExperienceOrder([pins containsObject:first.identifier], [pins containsObject:second.identifier],
             (int)IDSortMode, first.count, second.count, first.latest.timeIntervalSince1970, second.latest.timeIntervalSince1970,
@@ -999,6 +1031,20 @@ static BOOL IDSupplementaryReady(id owner) {
     else if (IDCollapseOnPresentation && IDPresentationCycle.live)
         self.collapseState = IDStablePresentationState(IDPresentationCycle, YES);
     [(IDDigestView *)self.panel.view updateCollapsePresentation];
+    // A capsule has no visible cards. Never build up to 160 hidden card trees
+    // during the cover-sheet gesture; expansion completion consumes latest models.
+    self.cardsDeferred = IDContainedMode && self.overlay && IDPanelCompact(self.collapseState)
+        && (!IDHideNative || IDAlwaysHideNative);
+    if (self.cardsDeferred) {
+        [(IDDigestView *)self.panel.view showCapsuleGroups:self.groups];
+        [(IDDigestView *)self.panel.view dropCards]; // synchronous privacy/action scrub
+        self.renderedCards = nil;
+        [self updatePanelGeometry];
+        [self.panel.view setNeedsLayout];
+        [self scheduleNativeListVisibility]; // readiness remains authoritative
+        IDRecordPerformance(@"render", started);
+        return;
+    }
     // Do not hide native notifications until newly built card views have laid out.
     [(IDDigestView *)self.panel.view showGroups:self.groups selected:self.selected];
     [(IDDigestView *)self.panel.view showCards];
@@ -1036,12 +1082,13 @@ static BOOL IDSupplementaryReady(id owner) {
         IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             IDPanelMaxHeight, IDPanelMaxHeight);
-        if (!self.geometryCacheValid || !CGRectEqualToRect(safe, self.geometrySafe)
-            || self.geometryRevision != IDOptionsRevision) {
+        BOOL compact = IDPanelCompact(self.collapseState) && (!IDHideNative || IDAlwaysHideNative);
+        if (!compact && (!self.geometryCacheValid || !CGRectEqualToRect(safe, self.geometrySafe)
+            || self.geometryRevision != IDOptionsRevision)) {
             self.geometryPreferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;
             self.geometrySafe = safe; self.geometryRevision = IDOptionsRevision; self.geometryCacheValid = YES;
         }
-        CGFloat preferred = self.geometryPreferred;
+        CGFloat preferred = compact ? MAX(44, self.geometryPreferred) : self.geometryPreferred;
         IDPanelRect rect = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             preferred, IDPanelMaxHeight);
@@ -1068,7 +1115,7 @@ static BOOL IDSupplementaryReady(id owner) {
         [self recordCollapseDiagnostic:@"beginAppearance" reason:@"already-active" consumed:NO];
         return;
     }
-    IDAuditPresentationRuntime(self.owner);
+    IDSchedulePresentationAudit(self.owner);
     self.collapseState = IDStablePresentationState(IDPresentationCycle, IDCollapseOnPresentation && IDContainedMode);
     [self recordCollapseDiagnostic:@"beginAppearance" reason:!IDContainedMode ? @"supplementary-mode" : !IDCollapseOnPresentation ? @"switch-off" : !IDPresentationCycle.live ? @"no-live-cycle" : @"cycle-applied-before-mount"
         consumed:IDCollapseOnPresentation && IDContainedMode && IDPresentationCycle.live];
@@ -1082,8 +1129,7 @@ static BOOL IDSupplementaryReady(id owner) {
     [self tryFirstFrameHandoff];
     self.appearanceEpoch = ++IDAppearanceEpoch;
     self.openingPending = YES;
-    id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
-    self.desiredSelection = [desired isKindOfClass:NSString.class] && [desired length] ? desired : nil;
+    self.desiredSelection = IDRememberFilter ? IDDesiredAppCache : nil;
 }
 
 - (void)endAppearance {
@@ -1195,7 +1241,8 @@ static BOOL IDSupplementaryReady(id owner) {
         self.selected = [self.selected isEqualToString:identifier] ? nil : identifier;
         if (IDContainedMode) self.groups = [self snapshot];
         self.desiredSelection = self.selected;
-        IDWritePreference(@"DesiredApp", IDRememberFilter ? self.desiredSelection : nil);
+        IDDesiredAppCache = IDRememberFilter ? [self.desiredSelection copy] : nil;
+        IDWritePreference(@"DesiredApp", IDDesiredAppCache);
         if (![self applyFilter]) {
             [self disable];
             return;
@@ -1274,7 +1321,7 @@ static BOOL IDSupplementaryReady(id owner) {
         }
         BOOL desiredExists = self.desiredSelection == nil;
         for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.desiredSelection]) desiredExists = YES;
-        if (!desiredExists) { self.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil); }
+        if (!desiredExists) { self.desiredSelection = nil; IDDesiredAppCache = nil; IDWritePreference(@"DesiredApp", nil); }
         if (!selectionExists) {
             [self cancelClear]; self.selected = nil;
             if (IDContainedMode) self.groups = groups = [self snapshot];
@@ -1321,8 +1368,13 @@ static BOOL IDSupplementaryReady(id owner) {
             IDDigestView *digest = (IDDigestView *)self.panel.view;
             if ((IDContainedMode && digest.builtCardCount != self.cards.count) || !unchanged || self.renderedRevision != IDOptionsRevision || !((!self.selected && !self.renderedSelection) || [self.selected isEqualToString:self.renderedSelection])) [self render];
             [self updatePanelGeometry];
-            [self.owner.view layoutIfNeeded];
-            [self updateNativeListVisibility];
+            if (IDPanelCompact(self.collapseState)) {
+                [self.owner.view setNeedsLayout];
+                [self scheduleNativeListVisibility];
+            } else {
+                [self.owner.view layoutIfNeeded];
+                [self updateNativeListVisibility];
+            }
             IDDiagnostics[@"presentation"] = @"UIKit-window-bounded";
             IDStatus(@"panel-visible", IDFilteringReady ? @"应用分组面板已加入可见控制器" : @"分组面板可见；原生筛选接口不兼容，应用按钮停用");
             return;
@@ -1471,13 +1523,24 @@ static BOOL IDOpenFeedback(NSString *message) {
     IDLog("owner loaded; panel deferred");
 }
 - (void)viewWillAppear:(BOOL)animated {
+    double totalStarted = IDPerformanceStart();
+    double preStarted = IDPerformanceStart();
     // Claim and hide the exact native candidate before UIKit's appearance pass.
     IDCoordinator *state = IDEnsureState(self);
-    [state beginAppearance];
-    [state assertAlwaysHideNativeList];
-    %orig;
-    [state assertAlwaysHideNativeList];
-    [state tryFirstFrameHandoff];
+    @try {
+        [state beginAppearance];
+        [state assertAlwaysHideNativeList];
+        IDRecordPerformance(@"ownerWillAppearPre", preStarted);
+        double origStarted = IDPerformanceStart();
+        @try {
+            %orig;
+        }
+        @finally { IDRecordPerformance(@"ownerWillAppearOrig", origStarted); }
+        double postStarted = IDPerformanceStart();
+        [state assertAlwaysHideNativeList];
+        [state tryFirstFrameHandoff];
+        IDRecordPerformance(@"ownerWillAppearPost", postStarted);
+    } @finally { IDRecordPerformance(@"ownerWillAppearTotal", totalStarted); }
 }
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
@@ -1642,15 +1705,18 @@ static void IDApplyPullCollapse(void) {
         }
         // Do not wait for render/snapshot readiness. An already mounted panel must fold now.
         [state cancelClear];
-        [state cancelCollapse];
+        // Apply the final compact state once, not an intermediate expanded layout.
+        [state.collapseAnimator stopAnimation:YES];
+        state.collapseAnimator = nil;
+        state.renderAfterCollapse = NO;
+        state.collapseGeometryAllowed = NO;
         state.collapseState = IDStablePresentationState(IDPresentationCycle,
             IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation);
         [(IDDigestView *)state.panel.view updateCollapsePresentation];
         [state updatePanelGeometry];
-        [state.owner.view layoutIfNeeded];
+        [state.owner.view setNeedsLayout];
         [state.panel.view setNeedsLayout];
-        [state.panel.view layoutIfNeeded];
-        [state updateNativeListVisibility];
+        [state scheduleNativeListVisibility];
         [state recordCollapseDiagnostic:@"directApply" reason:@"state-applied"
             consumed:IDEnabled && IDGrouping && IDContainedMode && IDCollapseOnPresentation && IDPresentationCycle.live];
         applied++;
@@ -1745,7 +1811,7 @@ static void IDExplicitPresentation(id manager, id slider, BOOL presenting, BOOL 
         IDDiagnostics[@"collapseCycle"] = @([IDDiagnostics[@"collapseCycle"] unsignedIntegerValue] + 1);
         IDApplyPullCollapse();
     }
-    IDAuditPresentationRuntime(nil);
+    IDSchedulePresentationAudit(nil);
     IDCollapseFlushSoon();
 }
 %group IDPullExplicitManager
@@ -1769,8 +1835,14 @@ static void IDExplicitPresentation(id manager, id slider, BOOL presenting, BOOL 
 %group IDPrimaryLifecycle
 %hook SBCoverSheetPrimarySlidingViewController
 - (void)_beginTransitionFromAppeared:(BOOL)appeared {
+    double started = IDPerformanceStart();
     IDPrimaryTransitionBegin(self, appeared);
-    %orig;
+    IDRecordPerformance(@"primaryBeginPre", started);
+    double origStarted = IDPerformanceStart();
+    @try {
+        %orig;
+    }
+    @finally { IDRecordPerformance(@"primaryBeginOrig", origStarted); }
 }
 - (void)_endTransitionToAppeared:(BOOL)appeared {
     %orig;
@@ -1858,7 +1930,7 @@ static void IDInstallPullHooks(void) {
     }
     IDDiagnostics[@"primaryLifecycleHook"] = lifecycleABI ? @"supported" : @"ABI-unavailable";
     IDFinishPresentationAudit();
-    IDAuditPresentationRuntime(nil);
+    IDSchedulePresentationAudit(nil);
     IDDiagnostics[@"presentationGestureSupported"] = @(IDPullHookInstalled);
     IDDiagnostics[@"collapseSignal"] = @"primary hidden-to-appearing lifecycle while UI unlocked; intent metadata observation only";
 }
@@ -1977,7 +2049,7 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
                 state.configuration = nil;
             }
             if (!IDRememberFilter || !IDEnabled || !IDGrouping) {
-                state.desiredSelection = nil; IDWritePreference(@"DesiredApp", nil);
+                state.desiredSelection = nil; IDDesiredAppCache = nil; IDWritePreference(@"DesiredApp", nil);
             }
             if (!IDEnabled || !IDGrouping) { state.recoveryAttempts = 0; [state resetFilter]; [state recover]; }
             // Snapshot/sort first; a direct render here would briefly use the old order.

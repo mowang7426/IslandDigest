@@ -58,7 +58,7 @@
     [self updatePanelGeometry];
     [self.owner.view layoutIfNeeded];
     [digest setNeedsLayout]; [digest layoutIfNeeded];
-    if (self.renderAfterCollapse && self.active) {
+    if ((self.renderAfterCollapse || (self.cardsDeferred && !IDPanelCompact(self.collapseState))) && self.active) {
         self.renderAfterCollapse = NO;
         [self render];
     } else [self updateNativeListVisibility];

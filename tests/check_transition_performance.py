@@ -22,7 +22,7 @@ for name,selector in [('previousPageButton','previousCardPage'),('nextPageButton
  assert show.index('self.'+name+' = [UIButton buttonWithType:')<show.index('[self.'+name+' addTarget:state action:@selector('+selector+')')
 assert 'if (!weakShell.openAction) return;' in show
 assert show.index('if (!weakShell.openAction) return;')<show.index('weakShell.accessibilityValue =')
-assert 'IDAuditPresentationRuntime(self.owner)' in t.split('if (self.active)',1)[-1]
+assert 'IDSchedulePresentationAudit(self.owner)' in t.split('if (self.active)',1)[-1]
 for method in ('dropCards','cancelSnapshot'):
  text=u if method=='dropCards' else t
  body=text.split('- (void)'+method+' {',1)[1].split('\n- (',1)[0]
