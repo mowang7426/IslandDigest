@@ -147,7 +147,7 @@
     CGFloat ownerHeight = self.coordinator.owner.view.bounds.size.height;
     if (ownerHeight <= 0) ownerHeight = UIScreen.mainScreen.bounds.size.height;
     NSUInteger visible = IDGridLayout ? IDExperienceVisibleRows(rows, ownerHeight, row) : 1;
-    return 66 + visible * row + (visible - 1) * 8;
+    return 66 + visible * row + (visible - 1) * 4;
 }
 - (CGSize)sizeThatFits:(CGSize)size {
     CGFloat category = [self categoryHeightForWidth:size.width];
@@ -196,7 +196,7 @@
     CGFloat cellWidth = MAX(1, (width - 2 * padding - (columns - 1) * gap) / columns);
     for (UIView *button in self.stack.subviews) {
         if (IDGridLayout) {
-            button.frame = CGRectMake(padding + (index % columns) * (cellWidth + gap), (index / columns) * (row + 8), cellWidth, row);
+            button.frame = CGRectMake(padding + (index % columns) * (cellWidth + gap), (index / columns) * (row + 4), cellWidth, row);
         } else {
             CGSize fitting = [button systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
             CGFloat w = MAX(96, MIN(MAX(96, width - 28), fitting.width));
@@ -204,7 +204,7 @@
         }
         index++;
     }
-    CGFloat height = IDGridLayout ? IDExperienceRows(index, columns) * (row + 8) - 8 : row;
+    CGFloat height = IDGridLayout ? IDExperienceRows(index, columns) * (row + 4) - 4 : row;
     CGFloat scrollWidth = IDGridLayout ? width : MAX(width, x + 6);
     self.stack.frame = CGRectMake(0, 0, scrollWidth, height);
     self.scroll.contentSize = CGSizeMake(scrollWidth, height);
@@ -292,7 +292,7 @@
         button.backgroundColor = UIColor.clearColor;
         UIView *tile = [UIView new]; tile.translatesAutoresizingMaskIntoConstraints = NO;
         tile.userInteractionEnabled = NO; tile.isAccessibilityElement = NO;
-        tile.layer.cornerRadius = IDMiniControls ? 11 : 17;
+        tile.layer.cornerRadius = IDMiniControls ? 9 : 17;
         tile.layer.cornerCurve = kCACornerCurveContinuous; tile.clipsToBounds = YES;
         tile.backgroundColor = active ? [UIColor.labelColor colorWithAlphaComponent:0.9] : [UIColor.secondaryLabelColor colorWithAlphaComponent:0.09];
         [button addSubview:tile];
@@ -307,9 +307,9 @@
         content.translatesAutoresizingMaskIntoConstraints = NO; [button addSubview:content];
         UIImageView *icon = [[UIImageView alloc] initWithImage:group.icon ?: [UIImage systemImageNamed:group ? @"app.fill" : @"square.stack.3d.up.fill"]];
         icon.tintColor = foreground; icon.contentMode = UIViewContentModeScaleAspectFit; icon.layer.cornerRadius = 7; icon.clipsToBounds = YES;
-        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:IDGridLayout ? 18 : (IDMiniControls ? 20 : 24)].active = YES; [icon.heightAnchor constraintEqualToConstant:IDGridLayout ? 18 : (IDMiniControls ? 20 : 24)].active = YES;
+        [content addArrangedSubview:icon]; [icon.widthAnchor constraintEqualToConstant:IDGridLayout ? 16 : (IDMiniControls ? 20 : 24)].active = YES; [icon.heightAnchor constraintEqualToConstant:IDGridLayout ? 16 : (IDMiniControls ? 20 : 24)].active = YES;
         UILabel *name = [UILabel new]; name.text = group ? group.name : @"全部"; name.textColor = foreground;
-        name.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledFontForFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold] maximumPointSize:22];
+        name.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledFontForFont:[UIFont systemFontOfSize:IDGridLayout ? 11 : 12 weight:UIFontWeightSemibold] maximumPointSize:22];
         name.adjustsFontForContentSizeCategory = YES;
         name.lineBreakMode = NSLineBreakByTruncatingTail;
         [name setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
@@ -323,7 +323,7 @@
         NSUInteger count = group ? group.count : total;
         if (IDShowCounts) {
             UILabel *badge = [UILabel new]; badge.text = count > 99 ? @"99+" : [NSString stringWithFormat:@"%lu", (unsigned long)count];
-            badge.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold]; badge.textColor = foreground; badge.alpha = 0.75;
+            badge.font = [UIFont monospacedDigitSystemFontOfSize:IDGridLayout ? 10 : 11 weight:UIFontWeightBold]; badge.textColor = foreground; badge.alpha = 0.75;
             [badge setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
             [badge setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
             [content addArrangedSubview:badge];

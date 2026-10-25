@@ -38,13 +38,13 @@ static double IDMonotonic(void) {
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
 static NSString *IDDesiredAppCache;
-static BOOL IDGridLayout = NO, IDRememberFilter = NO, IDMiniControls = YES;
+static BOOL IDGridLayout = YES, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO, IDAlwaysHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
 static CGFloat IDPanelOpacity = 0;
 static BOOL IDPanelBlur = NO;
 static NSInteger IDSortMode;
-static NSInteger IDGridColumns = 3;
+static NSInteger IDGridColumns = 0;
 static NSUInteger IDOptionsRevision;
 static NSMutableDictionary *IDDiagnostics;
 #include "IDCollapseDiagnostics.inc"
@@ -112,8 +112,8 @@ static void IDLoadOptions(void) {
     IDGrouping = IDPref(@"Grouping", YES);
     IDShowCounts = IDPref(@"ShowCounts", YES);
     IDPreviewWhenUnlocked = IDPref(@"AllowPreviewWhenUnlocked", NO);
-    IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"compact") isEqualToString:@"grid"];
-    NSString *columns = IDStringOption(@"GridColumns", @[@"three", @"two", @"auto"], @"three");
+    IDGridLayout = [IDStringOption(@"LayoutMode", @[@"compact", @"grid"], @"grid") isEqualToString:@"grid"];
+    NSString *columns = IDStringOption(@"GridColumns", @[@"three", @"two", @"auto"], @"auto");
     IDGridColumns = [columns isEqualToString:@"two"] ? 2 : [columns isEqualToString:@"auto"] ? 0 : 3;
     IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
@@ -217,7 +217,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.24.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.25.startup-pending";
 #endif
 }
 

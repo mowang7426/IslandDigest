@@ -1,5 +1,9 @@
 # 灵屿通知构建与验证记录
 
+## 0.3.25 紧凑分类网格
+
+详见 [COMPACT-GRID-0.3.25.md](COMPACT-GRID-0.3.25.md)。本地 30 组可移植源码/C 回归成功，含分类专属基线隔离契约；Foundation 原生夹具必须由 macOS CI 执行，本地 Linux 不支持其 ARC/Foundation 构建，不计通过。最终双方案 CI、head_sha、artifact ZIP digest、下载后严格包检查及 SHA256SUMS 以交付目录 verification.json 为准，不以中间提交的包替代。未真机视觉验收，未安装、注销或操作通知。
+
 ## 0.1.4 候选：修正已复现的恢复重入
 
 日期：2026-10-21，约 14:48–14:55。本机 iOS 17.0。

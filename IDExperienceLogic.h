@@ -13,10 +13,10 @@ static inline int IDExperienceOrder(int firstPinned, int secondPinned, int mode,
 static inline size_t IDExperienceGridColumns(double width, int grid, int preference, double textScale) {
     if (!grid) return 1;
     if (!(width > 0) || !(textScale > 0)) return 1;
-    // 16pt outer padding, 6pt gaps; preserve names/icons/counts and 44pt hit height.
-    double minimum = textScale > 1.9 ? 210 : textScale > 1.35 ? 128 : 100;
-    size_t requested = preference == 2 ? 2 : 3;
-    if (preference == 0 && textScale <= 1.35) minimum = 108;
+    // Auto is compact by default, while explicit legacy two/three-column choices
+    // stay authoritative. Large text reduces columns before truncation becomes unusable.
+    double minimum = textScale > 1.9 ? 210 : textScale > 1.35 ? 128 : 82;
+    size_t requested = preference == 2 ? 2 : preference == 3 ? 3 : (width >= 650 ? 5 : 4);
     for (size_t columns = requested; columns > 1; columns--) {
         if ((width - 16 - (columns - 1) * 6) / columns >= minimum) return columns;
     }
@@ -37,7 +37,7 @@ static inline IDCategoryGeometry IDExperienceCategoryGeometry(double rowHeight, 
     IDCategoryGeometry result;
     result.hitHeight = rowHeight > 44 ? rowHeight : 44;
     result.insetX = mini ? 4 : 0;
-    result.insetY = mini ? 4 : 0;
+    result.insetY = mini ? 6 : 0;
     result.visualHeight = result.hitHeight - 2 * result.insetY;
     result.contentPadding = 5;
     return result;
@@ -45,7 +45,7 @@ static inline IDCategoryGeometry IDExperienceCategoryGeometry(double rowHeight, 
 static inline size_t IDExperienceVisibleRows(size_t rows, double availableHeight, double rowHeight) {
     size_t result = 1;
     for (size_t candidate = 2; candidate <= 3; candidate++) {
-        if (candidate <= rows && 60 + candidate * rowHeight + (candidate - 1) * 8 <= availableHeight * 0.45) result = candidate;
+        if (candidate <= rows && 66 + candidate * rowHeight + (candidate - 1) * 4 <= availableHeight * 0.45) result = candidate;
     }
     return result;
 }

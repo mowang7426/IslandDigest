@@ -117,9 +117,9 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if ([key isEqualToString:@"TextPalette"]) return IDStringOption(key, IDTextPaletteValues(), @"cyanPurple");
     if ([key isEqualToString:@"SolidText"]) return IDStringOption(key, @[@"label", @"white", @"black"], @"label");
     if ([key isEqualToString:@"SortMode"]) return IDStringOption(key, @[@"recent", @"count", @"name"], @"recent");
-    if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"three");
+    if ([key isEqualToString:@"GridColumns"]) return IDStringOption(key, @[@"three", @"two", @"auto"], @"auto");
     if ([key isEqualToString:@"CategoryStyle"]) return IDStringOption(key, @[@"mini", @"standard"], @"mini");
-    if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"compact");
+    if ([key isEqualToString:@"LayoutMode"]) return IDStringOption(key, @[@"compact", @"grid"], @"grid");
     return @(IDPref(key, !([key isEqualToString:@"CollapseOnPresentation"] || [key isEqualToString:@"RememberFilter"] || [key isEqualToString:@"HideNativeList"] || [key isEqualToString:@"AllowPreviewWhenUnlocked"] || [key isEqualToString:@"PanelBlur"] || [key isEqualToString:@"GradientText"] || [key isEqualToString:@"TextShadow"] || [key isEqualToString:@"PerformanceDiagnostics"])));
 }
 - (void)setValue:(id)value specifier:(PSSpecifier *)specifier {
@@ -156,7 +156,7 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     if (_specifiers) return _specifiers;
     IDReloadPreferences();
     NSMutableArray *items = [NSMutableArray new];
-    [items addObject:[self group:@"灵屿通知 0.3.24 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
+    [items addObject:[self group:@"灵屿通知 0.3.25 · MoWang" footer:@"通知整理与显示。设置即时保存，无需注销。"]];
     [items addObject:[self toggle:@"启用灵屿通知" key:@"Enabled"]];
     [items addObject:[self toggle:@"插件通知卡片" key:@"ContainedMode"]];
     [items addObject:[self group:@"预览与隐私" footer:@"预览默认关闭。仅在解锁、受保护数据可用且界面可见时读取内容；锁定即清空。可能无法遵循每个 App 的“永不显示预览”，请谨慎开启。内容不联网、不写入日志或偏好。"]];
@@ -178,10 +178,10 @@ static PSSpecifier *IDGroupSpecifier(NSString *title, NSString *footer) {
     [items addObject:[self choice:@"应用排序" key:@"SortMode" values:@[@"recent", @"count", @"name"] titles:@[@"最近通知优先（默认）", @"通知数量从多到少", @"应用名称（本地语言）"]]];
     [items addObject:[self toggle:@"记住上次筛选的应用" key:@"RememberFilter"]];
     [items addObject:[PSSpecifier preferenceSpecifierNamed:@"管理置顶应用" target:self set:NULL get:NULL detail:IDPinnedAppsController.class cell:PSLinkCell edit:Nil]];
-    [items addObject:[self group:@"分类布局" footer:@"网格最多显示三行，超出后内部滚动；小屏或较大字体自动减少列数。长按应用胶囊可管理置顶。"]];
+    [items addObject:[self group:@"分类布局" footer:@"默认使用紧凑网格，最多显示三行，超出后内部滚动；小屏或较大字体自动减少列数。显式选择的两列或三列保持不变。"]];
     [items addObject:[self choice:@"分类视觉密度" key:@"CategoryStyle" values:@[@"mini", @"standard"] titles:@[@"迷你（默认）", @"标准"]]];
-    [items addObject:[self choice:@"显示布局" key:@"LayoutMode" values:@[@"compact", @"grid"] titles:@[@"紧凑横向胶囊（默认）", @"多行网格"]]];
-    [items addObject:[self choice:@"网格每行应用数" key:@"GridColumns" values:@[@"three", @"two", @"auto"] titles:@[@"三列（默认）", @"两列", @"自动"]]];
+    [items addObject:[self choice:@"显示布局" key:@"LayoutMode" values:@[@"compact", @"grid"] titles:@[@"横向胶囊", @"紧凑多行网格（默认）"]]];
+    [items addObject:[self choice:@"网格每行应用数" key:@"GridColumns" values:@[@"three", @"two", @"auto"] titles:@[@"三列", @"两列", @"自动（默认，最多五列）"]]];
     [items addObject:[self group:@"背景与文字" footer:@"背景 0 为透明、100 为不透明，磨砂独立控制。文字默认跟随系统；复杂壁纸建议增加背景不透明度以保持对比。仅影响插件，不改变隐私规则。"]];
     [items addObject:[self slider:@"背景不透明度" key:@"PanelBackgroundOpacity" low:0 high:100 fallback:0 step:1]];
     [items addObject:[self toggle:@"磨砂背景" key:@"PanelBlur"]];

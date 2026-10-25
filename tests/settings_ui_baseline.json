@@ -102,7 +102,7 @@
     "- (PSSpecifier *)toggle:": "f365c3af3e3af3dd9bad49d1f6b487d89fdad31b6a371008f856ba47edbd740a",
     "- (PSSpecifier *)choice:": "44c7e5de05a4149f064d7a199d8427ca44e86073758f7039ec44a3d9edc9014e",
     "- (PSSpecifier *)slider:": "9bed128cc5eb36720a33e74d5b5d2342fd3632285d16e341e94c70d838d0895b",
-    "- (id)valueForSpecifier:": "c2a8aa11bc778a9a1df3795f1717c16dac45132485eb7be6a47fcadfb6d5f430",
+    "- (id)valueForSpecifier:": "62b3e9775558674562baf369db3b84b08b914a0030030d88549efeac1d85a6cb",
     "- (void)resetPanelLayout": "760cec9230c64b7aa2e15ac16058e4c35cc453d7e487614fab2d5a31e618ac13",
     "- (void)setPinned:": "9d4bdccbb4d26a1c185a69fdedaac1b331099c81ea70f4b924519b6ed1441e4e",
     "- (void)resetPins": "576b372ebf75953e52f2b0c7cf10cbd7a9491907bfb1cb2560c3d053af6f675c"

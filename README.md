@@ -1,3 +1,15 @@
+# 灵屿通知 0.3.25 · 紧凑分类网格
+
+沿用 0.3.24 基线 `e99086ae60bf657405b6ae97ff849b76e4e84ae5`，独立分支 `feature/0.3.25-compact-category-grid`，PR 仅指向 `feature/0.3.24-transition-critical-path`。只调整分类区，完整尺寸、列数、已有偏好生效策略和验包契约见 [COMPACT-GRID-0.3.25.md](COMPACT-GRID-0.3.25.md)。
+
+- 迷你视觉高度 36→32pt，真实点击高度仍至少 44pt；网格图标 18→16pt、名称 12→11pt、数量 11→10pt、行距 8→4pt。
+- 默认紧凑网格/自动列：普通手机按宽度 3–4 列，宽屏最多 5 列；显式两列/三列保留，仍立即获得尺寸变化；大字自动降列。已存横滑/标准密度不强制覆盖，可在设置切换。
+- 保留 .24 性能路径、胶囊、即时隐私擦除、普通隐藏 readiness 和 .23 无常驻 footer；不恢复 .3.4。
+- 两台用户设备的越狱都是 RootHide，16.2 Dopamine 与 17 Relaxin 均选 arm64e deb；普通 rootless 另有 arm64 deb。不合 main、不发布 Release、不安装/注销、不操作通知。
+- CI/严格验包不是设备视觉或真实通知行为证明；尚未真机视觉验收。
+
+以下为历史版本记录，不代表当前版本的布局或设备验证。
+
 # 灵屿通知 0.3.20 · 独立诊断页
 
 基于 0.3.19 `625a19d012653785fb9d751bfce3ed5cd6a4e7ba`，分支 `feature/0.3.20-diagnostics-page`，PR 仅指向 `feature/0.3.19-settings-ui`，不合并 main。
