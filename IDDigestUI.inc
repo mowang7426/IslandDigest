@@ -163,7 +163,7 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.capsuleButton.frame = self.bounds;
-    if (IDPanelTransitioning(self.coordinator.collapseState)) return;
+    if (IDPanelCompact(self.coordinator.collapseState) || IDPanelTransitioning(self.coordinator.collapseState)) return;
     CGSize contentSize = self.expandedSize.width > 0 ? self.expandedSize : self.bounds.size;
     self.expandedContent.frame = (CGRect){CGPointZero, contentSize};
     CGFloat width = contentSize.width, row = [self rowHeight];
@@ -246,15 +246,7 @@
     [button cancelTrackingWithEvent:nil]; // recognizer cancels touches: no filter action on release.
     [self.coordinator togglePinnedIdentifier:button.accessibilityIdentifier];
 }
-- (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected {
-    CGPoint offset = self.scroll.contentOffset;
-    NSArray<UIView *> *previousButtons = self.stack.subviews.copy;
-    NSMutableDictionary *retainedButtons = [NSMutableDictionary new];
-    NSMutableSet *usedButtons = [NSMutableSet new];
-    for (UIView *view in previousButtons) {
-        NSArray *signature = objc_getAssociatedObject(view, &IDStableGroupSignatureKey);
-        if (signature.count) retainedButtons[signature[0]] = view;
-    }
+- (void)showCapsuleGroups:(NSArray<IDGroup *> *)groups {
     NSUInteger total = 0; for (IDGroup *group in groups) total += group.count;
     NSString *compactCount = total > 999 ? @"999+" : [NSString stringWithFormat:@"%lu", (unsigned long)total];
     NSString *capsuleTitle = [@"  " stringByAppendingString:compactCount];
@@ -267,6 +259,18 @@
     [self.capsuleButton setAttributedTitle:[[NSAttributedString alloc] initWithString:capsuleTitle attributes:highlightAttributes]
         forState:UIControlStateHighlighted];
     self.capsuleButton.accessibilityLabel = [NSString stringWithFormat:@"通知面板已折叠，共 %lu 条通知，点按展开", (unsigned long)total];
+}
+- (void)showGroups:(NSArray<IDGroup *> *)groups selected:(NSString *)selected {
+    [self showCapsuleGroups:groups];
+    CGPoint offset = self.scroll.contentOffset;
+    NSArray<UIView *> *previousButtons = self.stack.subviews.copy;
+    NSMutableDictionary *retainedButtons = [NSMutableDictionary new];
+    NSMutableSet *usedButtons = [NSMutableSet new];
+    for (UIView *view in previousButtons) {
+        NSArray *signature = objc_getAssociatedObject(view, &IDStableGroupSignatureKey);
+        if (signature.count) retainedButtons[signature[0]] = view;
+    }
+    NSUInteger total = 0; for (IDGroup *group in groups) total += group.count;
     self.detail.text = IDShowCounts ? [NSString stringWithFormat:@"%lu 个应用 · %lu 条", (unsigned long)groups.count, (unsigned long)total] : @"保留原生通知操作";
     NSMutableArray *entries = [NSMutableArray arrayWithObject:NSNull.null];
     [entries addObjectsFromArray:groups.count > 128 ? [groups subarrayWithRange:NSMakeRange(0, 128)] : groups];

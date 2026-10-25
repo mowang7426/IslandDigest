@@ -27,6 +27,20 @@ static id IDPresentationManagerIfLoaded(void) {
     if (!IDMethod(object_getClass(cls), "sharedInstanceIfExists", "@", 2)) return nil;
     return ((id (*)(id, SEL))objc_msgSend)(cls, sel_registerName("sharedInstanceIfExists"));
 }
+static void IDSchedulePresentationAudit(id owner) {
+    // Diagnostics only: do not traverse class hierarchies ahead of Apple's callback.
+    static BOOL pending;
+    static __weak id pendingOwner;
+    if (!NSThread.isMainThread) return;
+    if (owner) pendingOwner = owner;
+    if (pending) return;
+    pending = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        pending = NO;
+        id current = pendingOwner; pendingOwner = nil;
+        IDAuditPresentationRuntime(current);
+    });
+}
 static void IDAuditPresentationRuntime(id owner) {
     if (!NSThread.isMainThread) return;
     IDCollapseDiagnosticInit();

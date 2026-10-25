@@ -7,7 +7,7 @@ s = (r/'IDShared.h').read_text()
 hook = t.split('%group IDPullInput')[1].split('%group IDPullTransitionEnd')[0]
 assert 'IDStableUserPull' not in hook and 'IDApplyPullCollapse' not in hook
 apply = t.split('static void IDApplyPullCollapse(void) {')[1].split('static void IDPullEnded')[0]
-for call in ('[state cancelClear]', '[state cancelCollapse]', 'state.collapseState = IDStablePresentationState', 'updateCollapsePresentation', '[state updatePanelGeometry]', '[state.owner.view layoutIfNeeded]'):
+for call in ('[state cancelClear]', '[state.collapseAnimator stopAnimation:YES]', 'state.collapseState = IDStablePresentationState', 'updateCollapsePresentation', '[state updatePanelGeometry]', '[state.owner.view setNeedsLayout]'):
     assert call in apply, call
 for forbidden in ('[state render]', 'snapshotGroups', 'dropContainedContent', 'IDEnumeration'):
     assert forbidden not in apply, forbidden
