@@ -22,7 +22,7 @@ Both CI schemes run it together with existing actual cleanup/dismissal/performan
 
 ## Device reproduction (not performed by CI)
 
-Test separately on iOS 17 Relaxin RootHide and iOS 16.2 Dopamine rootless; packages are not interchangeable. No installation, respring or live-notification operation was performed by this work.
+Test separately on iOS 17 Relaxin RootHide and iOS 16.2 Dopamine RootHide; both user environments require the RootHide package. The separate ordinary rootless package is only for an actual ordinary rootless jailbreak, not selected by iOS version. RootHide and ordinary rootless packages are not interchangeable. No installation, respring or live-notification operation was performed by this work.
 
 1. Settings → 灵屿通知 → enable the existing performance diagnostics switch (default OFF); use the bottom 诊断信息 → 刷新诊断信息 page. It exports stage counts/max milliseconds, never body text, object addresses or app identifiers in these new timing fields.
 2. In each environment record cold first pull, warm repeated pull/upward dismissal and canceled gesture, with 0/small/160+ existing notifications; compare performance OFF then ON. Report OS/jailbreak, package version, contained/collapse/native-hide modes and the diagnostic stage counts/maxima.
