@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install build dependencies
         run: brew install ldid xz
@@ -52,6 +54,7 @@ jobs:
           clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation tests/DiagnosticsSnapshot.m -o /tmp/id-diagnostics-snapshot-tests
           /tmp/id-diagnostics-snapshot-tests
           python3 tests/check_source.py
+          python3 tests/check_compact_grid.py
           python3 tests/check_contained.py
           python3 tests/check_collapse.py
           python3 tests/check_performance_text.py
@@ -111,7 +114,7 @@ jobs:
           packages = list(Path('packages').glob('*.deb'))
           assert len(packages) == 1, packages
           subprocess.run(['python3', 'tests/check_package.py', str(packages[0]),
-                          '0.3.24', '${{ matrix.scheme }}'], check=True)
+                          '0.3.25', '${{ matrix.scheme }}'], check=True)
           PY
 
       - name: Upload package

@@ -36,13 +36,31 @@ int main(void) {
             }
         }
     }
-    // Actual production tile constants: 36pt mini visual inside >=44pt hit area.
+    // Auto uses four columns only when each 44pt-high button remains >=82pt wide.
+    assert(IDExperienceGridColumns(361,1,0,1) == 3);
+    assert(IDExperienceGridColumns(362,1,0,1) == 4);
+    assert(IDExperienceGridColumns(649,1,0,1) == 4);
+    assert(IDExperienceGridColumns(650,1,0,1) == 5);
+    // The 66pt header/hint plus actual 4pt row gap fit exactly at this boundary.
+    assert(IDExperienceVisibleRows(3,450,44) == 2);
+    assert(IDExperienceVisibleRows(3,460,44) == 3);
+    for (int pref = 0; pref <= 3; pref++) {
+        for (int width = 200; width <= 1000; width++) {
+            size_t cols = IDExperienceGridColumns(width,1,pref,1);
+            double cell = (width - 16 - (cols - 1) * 6) / cols;
+            assert(cell >= 44);
+            // 16pt icon, 10pt pin + 2pt gap, conservative 24pt count + 2pt gap,
+            // name gap 2pt, tile inset 8pt and content padding 10pt.
+            assert(cell - 18 - 16 - 12 - 26 - 2 >= 0);
+        }
+    }
+    // Actual production tile constants: 32pt mini visual inside >=44pt hit area.
     for (int mini = 0; mini <= 1; mini++) {
         for (int row = 0; row <= 80; row++) {
             IDCategoryGeometry g = IDExperienceCategoryGeometry(row, mini);
             assert(g.hitHeight >= 44);
             assert(g.visualHeight + 2 * g.insetY == g.hitHeight);
-            assert(g.visualHeight >= 36);
+            assert(g.visualHeight >= 32);
             for (int panel = 200; panel <= 1000; panel += 10) {
                 for (int scale = 10; scale <= 24; scale++) {
                     size_t cols = IDExperienceGridColumns(panel, 1, 3, scale / 10.0);
@@ -55,7 +73,7 @@ int main(void) {
                     for (int name = 0; name <= 150; name += 5) {
                         for (int pin = 0; pin <= 1; pin++) {
                             for (int badge = 0; badge <= 24; badge += 24) {
-                                double fixed = 18 + pin * 12 + (badge ? badge + 2 : 0) + 2;
+                                double fixed = 16 + pin * 12 + (badge ? badge + 2 : 0) + 2;
                                 double nameWidth = name < available - fixed ? name : available - fixed;
                                 assert(nameWidth >= 0);
                                 double group = fixed + nameWidth;
@@ -71,7 +89,7 @@ int main(void) {
             }
         }
     }
-    assert(IDExperienceCategoryGeometry(44, 1).visualHeight == 36);
+    assert(IDExperienceCategoryGeometry(44, 1).visualHeight == 32);
     assert(IDExperienceCategoryGeometry(52, 0).visualHeight == 52);
     puts("PASS real shared C ordering/layout logic; no iOS runtime claims");
     return 0;

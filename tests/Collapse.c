@@ -32,11 +32,18 @@ int main(void) {
     // Normal phones: THREE COLUMNS, not three visible rows. Narrow / AX font fallback.
     assert(IDExperienceGridColumns(359,1,3,1) == 3);
     assert(IDExperienceGridColumns(374,1,3,1) == 3);
-    assert(IDExperienceGridColumns(304,1,3,1) == 2);
+    assert(IDExperienceGridColumns(304,1,3,1) == 3);
     assert(IDExperienceGridColumns(359,1,3,1.6) == 2);
     assert(IDExperienceGridColumns(359,1,3,2.3) == 1);
     assert(IDExperienceGridColumns(390,1,2,1) == 2);
-    assert(IDExperienceGridColumns(390,1,0,1) == 3);
+    assert(IDExperienceGridColumns(390,1,0,1) == 4);
+    assert(IDExperienceGridColumns(320,1,0,1) == 3);
+    assert(IDExperienceGridColumns(768,1,0,1) == 5);
+    assert(IDExperienceGridColumns(390,1,0,1.6) == 2);
+    assert(IDExperienceGridColumns(390,1,0,2.3) == 1);
+    // Explicit legacy choices remain authoritative at ordinary text size.
+    assert(IDExperienceGridColumns(768,1,3,1) == 3);
+    assert(IDExperienceGridColumns(768,1,2,1) == 2);
     assert(IDExperienceGridColumns(390,0,3,1) == 1);
     assert(IDExperienceRows(7,3) == 3);
     for (int w = 200; w <= 1000; w++) for (int scale = 10; scale <= 30; scale++) {
