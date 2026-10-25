@@ -163,7 +163,7 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.capsuleButton.frame = self.bounds;
-    if (IDPanelCompact(self.coordinator.collapseState) || IDPanelTransitioning(self.coordinator.collapseState)) return;
+    if ((IDPanelCompact(self.coordinator.collapseState) && (!IDHideNative || IDAlwaysHideNative)) || IDPanelTransitioning(self.coordinator.collapseState)) return;
     CGSize contentSize = self.expandedSize.width > 0 ? self.expandedSize : self.bounds.size;
     self.expandedContent.frame = (CGRect){CGPointZero, contentSize};
     CGFloat width = contentSize.width, row = [self rowHeight];

@@ -1033,7 +1033,8 @@ static BOOL IDSupplementaryReady(id owner) {
     [(IDDigestView *)self.panel.view updateCollapsePresentation];
     // A capsule has no visible cards. Never build up to 160 hidden card trees
     // during the cover-sheet gesture; expansion completion consumes latest models.
-    self.cardsDeferred = IDContainedMode && self.overlay && IDPanelCompact(self.collapseState);
+    self.cardsDeferred = IDContainedMode && self.overlay && IDPanelCompact(self.collapseState)
+        && (!IDHideNative || IDAlwaysHideNative);
     if (self.cardsDeferred) {
         [(IDDigestView *)self.panel.view showCapsuleGroups:self.groups];
         [(IDDigestView *)self.panel.view dropCards]; // synchronous privacy/action scrub
@@ -1081,7 +1082,7 @@ static BOOL IDSupplementaryReady(id owner) {
         IDPanelRect room = IDLayoutPanel(CGRectGetMinX(safe), CGRectGetMinY(safe),
             CGRectGetMaxX(safe), CGRectGetMaxY(safe), IDPanelTopOffset, IDPanelSideInset,
             IDPanelMaxHeight, IDPanelMaxHeight);
-        BOOL compact = IDPanelCompact(self.collapseState);
+        BOOL compact = IDPanelCompact(self.collapseState) && (!IDHideNative || IDAlwaysHideNative);
         if (!compact && (!self.geometryCacheValid || !CGRectEqualToRect(safe, self.geometrySafe)
             || self.geometryRevision != IDOptionsRevision)) {
             self.geometryPreferred = [(IDDigestView *)self.panel.view sizeThatFits:CGSizeMake(room.width, 0)].height;

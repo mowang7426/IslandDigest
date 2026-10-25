@@ -19,7 +19,7 @@ assert 'if (IDPanelCompact(self.collapseState)) rect = IDPanelCapsule(rect)' in 
 for anchor in ('overlayHeight.constant=rect.height', 'overlayTop.constant=rect.y', 'overlayLeft.constant=rect.x', 'overlayWidth.constant=rect.width'):
     assert anchor in t
 assert 'self.expandedContent = [[UIView alloc]' in u and '[self.expandedContent addSubview:view]' in u
-assert 'if (IDPanelCompact(self.coordinator.collapseState) || IDPanelTransitioning(self.coordinator.collapseState)) return;' in u
+assert 'if ((IDPanelCompact(self.coordinator.collapseState) && (!IDHideNative || IDAlwaysHideNative)) || IDPanelTransitioning(self.coordinator.collapseState)) return;' in u
 assert 'self.capsuleButton.frame = self.bounds;' in u
 for key in ('IslandDigestCollapse', 'IslandDigestCapsule', 'self.capsuleButton.accessibilityLabel', 'self.expandedContent.accessibilityElementsHidden', 'self.collapseButton.frame = CGRectMake(MAX(0, width - 96), 0, 44, 44)', 'self.clearButton.frame = CGRectMake(MAX(0, width - 48), 0, 44, 44)'):
     assert key in u, key

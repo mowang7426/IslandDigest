@@ -34,7 +34,7 @@ source=r'''
 #import <Foundation/Foundation.h>
 #include <assert.h>
 #include "IDStableRefreshLogic.h"
-static BOOL IDContainedMode=YES, IDCollapseOnPresentation=YES;
+static BOOL IDContainedMode=YES, IDCollapseOnPresentation=YES, IDHideNative=NO, IDAlwaysHideNative=NO;
 static NSUInteger IDOptionsRevision=1;
 static IDStablePresentation IDPresentationCycle;
 static double IDMonotonic(void) { return 1; }
@@ -119,6 +119,9 @@ int main(void) { @autoreleasepool {
  f.allowed=YES; f.panel.isViewLoaded=NO; [f render]; assert(builds==2);
  f.panel.isViewLoaded=YES; f.collapseState=IDPanelExpanded; f.overlay=NO;
  IDPresentationCycle.compact=true; [f render]; assert(builds==3 && !f.cardsDeferred);
+ // Normal native hiding needs real retained cards; never weaken its proof.
+ f.overlay=YES; IDHideNative=YES; [f render]; assert(builds==4 && !f.cardsDeferred);
+ IDAlwaysHideNative=YES; [f render]; assert(builds==4 && f.cardsDeferred);
  puts("PASS production render: cold/warm 160-card deferral, repeats, latest page/selection, manual expansion, inactive/unloaded, supplementary");
 } }
 '''
