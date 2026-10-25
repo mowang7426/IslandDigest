@@ -1531,7 +1531,9 @@ static BOOL IDOpenFeedback(NSString *message) {
         [state assertAlwaysHideNativeList];
         IDRecordPerformance(@"ownerWillAppearPre", preStarted);
         double origStarted = IDPerformanceStart();
-        @try { %orig; }
+        @try {
+            %orig;
+        }
         @finally { IDRecordPerformance(@"ownerWillAppearOrig", origStarted); }
         double postStarted = IDPerformanceStart();
         [state assertAlwaysHideNativeList];
@@ -1836,7 +1838,9 @@ static void IDExplicitPresentation(id manager, id slider, BOOL presenting, BOOL 
     IDPrimaryTransitionBegin(self, appeared);
     IDRecordPerformance(@"primaryBeginPre", started);
     double origStarted = IDPerformanceStart();
-    @try { %orig; }
+    @try {
+        %orig;
+    }
     @finally { IDRecordPerformance(@"primaryBeginOrig", origStarted); }
 }
 - (void)_endTransitionToAppeared:(BOOL)appeared {
