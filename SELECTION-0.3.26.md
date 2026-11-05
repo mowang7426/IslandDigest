@@ -24,5 +24,6 @@
 * `tests/run_selection_fixture.py`：macOS Foundation 执行真实 `IDDeferredSelection.inc`；阻塞第一笔磁盘替身期间提交 1000 次新选择后清空，再提交 1000 次选择最终 Minis；验证主线程零写、复制可变输入、背压、最新值、清空顺序。执行从生产 `selectIdentifier:` 提取的 All→All 判定，覆盖 19 个失效情形。
 * 四种变异必须被击杀：取消输入复制、丢失 dirty 最新值、取消 pending 背压、错误跳过非零页重置。测试磁盘边界使用替身，不写设备偏好。
 * 运行既有源码/C/Foundation 回归；历史 footer 基线只归一化精确的布局差异，历史 .25 网格契约保留，并由新增 .26 契约约束当前文件。
-* macOS-14 CI 对 RootHide/rootless 真正编译，严格 `check_package.py` 已将 0.3.26 加入全部版本适用检查。以最终 HEAD 的成功 run 为准，核对 artifact `workflow_run.head_sha` 和下载 ZIP SHA-256 digest，再对每个下载 deb 执行严格检查。
+* 首轮 macOS-14 在执行步骤前被平台取消，注释为 `The configuration 'macos-14-arm64-us-default' is not supported`。因此改用 `macos-15-intel` 并固定 `Xcode_16.4`，仍用 iPhoneOS16.5 SDK 和现有 classic linker 参数。
+* macOS-15 Intel CI 对 RootHide/rootless 真正编译，严格 `check_package.py` 已将 0.3.26 加入全部版本适用检查。以最终 HEAD 的成功 run 为准，核对 artifact `workflow_run.head_sha` 和下载 ZIP SHA-256 digest，再对每个下载 deb 执行严格检查。
 * 交付目录 `/var/minis/shared/islanddigest-0.3.26-build/`，含 deb、`SHA256SUMS` 与 `verification.json`。RootHide 使用 Debian `iphoneos-arm64e` 包（适用用户 iOS 16.2 Dopamine RootHide、17 Relaxin RootHide），普通 rootless 使用 `iphoneos-arm64` 包；两者实际 Mach-O 都按现有工程构建 arm64+arm64e，不可只根据文件名猜测二进制切片。
