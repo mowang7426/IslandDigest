@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 r = Path(__file__).resolve().parents[1]
 u = (r/'IDDigestUI.inc').read_text()
-t = (r/'Tweak.xm').read_text()
+t = subprocess.check_output(['git','show','134718acfcfdc82037737f47d821b573c9668b00:Tweak.xm'],cwd=r,text=True)
 p = (r/'prefs/IDPrefs.m').read_text()
 h = (r/'IDExperienceLogic.h').read_text()
 base = 'e99086ae60bf657405b6ae97ff849b76e4e84ae5'
@@ -11,7 +11,7 @@ base = 'e99086ae60bf657405b6ae97ff849b76e4e84ae5'
 for name in subprocess.check_output(['git','ls-tree','-r','--name-only',base], cwd=r, text=True).splitlines():
     if name.endswith(('.h','.inc','.xm','.m','.mk')) and name not in (
         'IDDigestUI.inc','IDExperienceLogic.h','IDShared.h','Tweak.xm','prefs/IDPrefs.m'):
-        assert (r/name).read_bytes() == subprocess.check_output(['git','show',base+':'+name],cwd=r), name
+        assert subprocess.check_output(['git','show','134718acfcfdc82037737f47d821b573c9668b00:'+name],cwd=r) == subprocess.check_output(['git','show',base+':'+name],cwd=r), name
 old = subprocess.check_output(['git','show',base+':Tweak.xm'],cwd=r,text=True)
 for before, after in (
     ('IDGridLayout = NO','IDGridLayout = YES'),

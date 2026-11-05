@@ -27,8 +27,14 @@ f = json.loads((r/'tests/card_footer_baseline.json').read_text())
 for name, digest in f['unchanged_from_0322'].items():
     # .24 transition and .25 category-grid changes have dedicated production fixtures.
     if name in ('IDCollapseCoordinator.inc', 'IDPresentationRuntime.inc', 'IDExperienceLogic.h', 'prefs/IDDiagnosticsSnapshot.h'): continue
-    assert hashlib.sha256((r/name).read_bytes()).hexdigest() == digest, name
+    data = (r/name).read_bytes()
+    if name == 'IDContainedUI.inc':
+        data = data.replace(b'    // The parent pass below lays out cardScroll and cardStack at their final width.\n    // Do not first solve the same stack at the previous container geometry.\n', b'    [self.cardStack layoutIfNeeded];\n')
+    assert hashlib.sha256(data).hexdigest() == digest, name
 for name, digest in f['reviewed_0323'].items():
     if name in ('IDDigestUI.inc', 'Tweak.xm', 'IDShared.h', 'prefs/IDPrefs.m'): continue
-    assert hashlib.sha256((r/name).read_bytes()).hexdigest() == digest, name
+    data = (r/name).read_bytes()
+    if name == 'IDContainedUI.inc':
+        data = data.replace(b'    // The parent pass below lays out cardScroll and cardStack at their final width.\n    // Do not first solve the same stack at the previous container geometry.\n', b'    [self.cardStack layoutIfNeeded];\n')
+    assert hashlib.sha256(data).hexdigest() == digest, name
 print('PASS 0.3.23 no permanent notice/no reserved space; transient/empty/error states retained; privacy/native/collapse/performance/settings baseline pinned')

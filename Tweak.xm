@@ -38,6 +38,7 @@ static double IDMonotonic(void) {
 static BOOL IDEnabled = YES, IDGrouping = YES, IDShowCounts = YES;
 static BOOL IDPreviewWhenUnlocked = NO;
 static NSString *IDDesiredAppCache;
+#include "IDDeferredSelection.inc"
 static BOOL IDGridLayout = YES, IDRememberFilter = NO, IDMiniControls = YES;
 static BOOL IDContainedMode = YES, IDHideNative = NO, IDAlwaysHideNative = NO;
 static CGFloat IDPanelTopOffset = 220, IDPanelSideInset = 8, IDPanelMaxHeight = 360;
@@ -117,7 +118,7 @@ static void IDLoadOptions(void) {
     IDGridColumns = [columns isEqualToString:@"two"] ? 2 : [columns isEqualToString:@"auto"] ? 0 : 3;
     IDMiniControls = [IDStringOption(@"CategoryStyle", @[@"mini", @"standard"], @"mini") isEqualToString:@"mini"];
     IDRememberFilter = IDPref(@"RememberFilter", NO);
-    id desired = IDRememberFilter ? IDPreferenceValue(@"DesiredApp") : nil;
+    id desired = IDRememberFilter ? (IDDesiredWritePending ? IDDesiredWriteValue : IDPreferenceValue(@"DesiredApp")) : nil;
     IDDesiredAppCache = [desired isKindOfClass:NSString.class] && [desired length] ? [desired copy] : nil;
     IDCollapseOnPresentation = IDPref(@"CollapseOnPresentation", NO);
     IDContainedMode = IDPref(@"ContainedMode", YES);
@@ -217,7 +218,7 @@ static const char *IDStartupMarkerPath(void) {
 #ifdef ID_REGRESSION
     return IDStartupMarkerOverride.fileSystemRepresentation;
 #else
-        return "/var/mobile/Library/Preferences/IslandDigest-0.3.25.startup-pending";
+        return "/var/mobile/Library/Preferences/IslandDigest-0.3.26.startup-pending";
 #endif
 }
 
@@ -1233,6 +1234,15 @@ static BOOL IDSupplementaryReady(id owner) {
 
 - (void)selectIdentifier:(NSString *)identifier {
     if (self.disabled || !self.active || self.updating) return;
+    // A selected app taps back to All, so only All -> All can be a no-op.
+    // Never skip first-open, page reset, changed models/options or clear feedback.
+    if (IDContainedMode && !identifier && !self.selected && self.cardPage == 0 && !self.openingPending
+        && !_clearGate.pending && !self.clearMessage && self.inserted && !self.cardsDeferred
+        && !IDPanelTransitioning(self.collapseState) && self.snapshotGroups && self.enumerationReliable
+        && self.snapshotMaster == IDRead(self.owner, "masterList")
+        && self.snapshotModelRevision == IDModelRevision && self.snapshotOptionsRevision == IDOptionsRevision
+        && self.renderedCards && self.cards == self.renderedCards && !self.renderedSelection
+        && self.renderedRevision == IDOptionsRevision) return;
     [self cancelClear]; self.clearMessage = nil;
     self.updating = YES;
     @try {
@@ -1242,7 +1252,7 @@ static BOOL IDSupplementaryReady(id owner) {
         if (IDContainedMode) self.groups = [self snapshot];
         self.desiredSelection = self.selected;
         IDDesiredAppCache = IDRememberFilter ? [self.desiredSelection copy] : nil;
-        IDWritePreference(@"DesiredApp", IDDesiredAppCache);
+        IDQueueDesiredAppWrite(IDDesiredAppCache);
         if (![self applyFilter]) {
             [self disable];
             return;
@@ -1321,7 +1331,7 @@ static BOOL IDSupplementaryReady(id owner) {
         }
         BOOL desiredExists = self.desiredSelection == nil;
         for (IDGroup *group in groups) if ([group.identifier isEqualToString:self.desiredSelection]) desiredExists = YES;
-        if (!desiredExists) { self.desiredSelection = nil; IDDesiredAppCache = nil; IDWritePreference(@"DesiredApp", nil); }
+        if (!desiredExists) { self.desiredSelection = nil; IDDesiredAppCache = nil; IDQueueDesiredAppWrite(nil); }
         if (!selectionExists) {
             [self cancelClear]; self.selected = nil;
             if (IDContainedMode) self.groups = groups = [self snapshot];
@@ -2033,6 +2043,10 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
             unlink(IDStartupMarkerPath()); // Explicit user recovery, not an automatic guard bypass.
             IDInstallHooks();
         }
+        if (!IDRememberFilter || !IDEnabled || !IDGrouping) {
+            IDDesiredAppCache = nil;
+            IDQueueDesiredAppWrite(nil); // Also supersede an in-flight write when there are no owners.
+        }
         for (UIViewController *owner in IDOwners.allObjects) {
             IDCoordinator *state = IDState(owner);
             [state cancelClear]; state.clearMessage = nil;
@@ -2049,7 +2063,7 @@ static void IDPreferenceChanged(CFNotificationCenterRef center, void *observer, 
                 state.configuration = nil;
             }
             if (!IDRememberFilter || !IDEnabled || !IDGrouping) {
-                state.desiredSelection = nil; IDDesiredAppCache = nil; IDWritePreference(@"DesiredApp", nil);
+                state.desiredSelection = nil;
             }
             if (!IDEnabled || !IDGrouping) { state.recoveryAttempts = 0; [state resetFilter]; [state recover]; }
             // Snapshot/sort first; a direct render here would briefly use the old order.
