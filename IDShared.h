@@ -1,7 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 #include <math.h>
-#define ID_VERSION @"0.3.25"
+#define ID_VERSION @"0.3.26"
 static CFStringRef const IDPrefsDomain = CFSTR("com.local.islanddigest");
 static NSString *const IDStatusPath = @"/var/mobile/Library/Preferences/com.local.islanddigest.status.plist";
 static BOOL IDPref(NSString *key, BOOL fallback) {

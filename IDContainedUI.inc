@@ -206,7 +206,8 @@
     }];
     self.builtCardCount = rendered;
     [self.cardStack setNeedsLayout];
-    [self.cardStack layoutIfNeeded];
+    // The parent pass below lays out cardScroll and cardStack at their final width.
+    // Do not first solve the same stack at the previous container geometry.
     [self invalidateIntrinsicContentSize];
     [self setNeedsLayout];
     [self layoutIfNeeded];
